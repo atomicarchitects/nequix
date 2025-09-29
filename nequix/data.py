@@ -157,7 +157,7 @@ class Dataset:
 
     def _create_cache(self, file_path, cache_dir, cutoff):
         if file_path.is_dir():
-            file_paths = sorted(file_path.glob("*.extxyz"))
+            file_paths = sorted(file_path.rglob("*.extxyz"))
             n_workers = 16
             chunk_size = len(file_paths) // n_workers + 1
             tasks = []
