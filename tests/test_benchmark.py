@@ -3,15 +3,15 @@ import json
 from pathlib import Path
 from typing import List
 
-import pytest
-import jax
-import equinox as eqx
-import pandas as pd
-import jraph
 import ase.build
+import equinox as eqx
+import jax
+import jraph
+import pandas as pd
+import pytest
 
+from nequix.data import atomic_numbers_to_indices, dict_to_graphstuple, preprocess_graph
 from nequix.model import load_model
-from nequix.data import preprocess_graph, dict_to_graphstuple, atomic_numbers_to_indices
 
 
 def load_nequix_mp_1():
@@ -21,7 +21,7 @@ def load_nequix_mp_1():
 
 @pytest.mark.skipif(not jax.default_backend() == "gpu", reason="gpu not available")
 @pytest.mark.benchmark(warmup=True, warmup_iterations=4, min_rounds=8)
-@pytest.mark.parametrize("size", (1,2,3,4,5,6,7))
+@pytest.mark.parametrize("size", (1, 2, 3, 4, 5, 6, 7))
 # @pytest.mark.parametrize("dtype", ["float32", "float64"])
 @pytest.mark.parametrize("dtype", ["float32"])
 def test_inference(benchmark, size: int, dtype: str):

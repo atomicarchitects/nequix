@@ -10,6 +10,12 @@ See more information in our [preprint](https://arxiv.org/abs/2508.16067).
 pip install nequix
 ```
 
+or for torch
+
+```bash
+pip install nequix[torch]
+```
+
 ### ASE calculator
 
 Using `nequix.calculator.NequixCalculator`, you can perform calculations in
@@ -19,9 +25,16 @@ ASE with a pre-trained Nequix model.
 from nequix.calculator import NequixCalculator
 
 atoms = ...
-atoms.calc = NequixCalculator("nequix-mp-1")
+atoms.calc = NequixCalculator("nequix-mp-1", backend="jax")
 ```
 
+or if you want to use the faster PyTorch + kernels backend
+
+```python
+...
+atoms.calc = NequixCalculator("nequix-mp-1", backend="torch")
+...
+```
 
 ### Training
 
@@ -30,6 +43,14 @@ configuration file:
 
 ```bash
 nequix_train <config>.yml
+```
+or for Torch
+
+```bash
+# Single GPU
+uv run nequix/torch/train.py <config>.yml
+# Multi-GPU
+uv run torchrun --nproc_per_node=<gpus> nequix/torch/train.py <config>.yml
 ```
 
 To reproduce the training of Nequix-MP-1, first clone the repo and sync the environment:
