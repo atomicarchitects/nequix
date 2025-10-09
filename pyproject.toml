@@ -1,6 +1,6 @@
 [project]
 name = "nequix"
-version = "0.2.0"
+version = "0.3.0"
 description = "Nequix source code"
 readme = "README.md"
 authors = [
@@ -53,3 +53,16 @@ dev = [
 
 [tool.ruff]
 line-length = 100
+
+[project.optional-dependencies]
+torch = [
+  "e3nn>=0.5.8",
+  "openequivariance==0.4.1",
+  "torch==2.7.0",
+  "torch-geometric>=2.6.1",
+  "triton",
+  "setuptools",
+]
+
+[tool.uv]
+override-dependencies = ["triton==3.2.0", "setuptools"]

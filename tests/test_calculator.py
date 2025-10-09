@@ -1,14 +1,16 @@
-import os
+import ase.build
 import numpy as np
 import pytest
-import ase.build
 
 from nequix.calculator import NequixCalculator
 
 
-def test_calculator_nequix_mp_1():
+@pytest.mark.parametrize("backend, kernel", [("torch", True), ("torch", False), ("jax", False)])
+def test_calculator_nequix_mp_1(backend, kernel):
     atoms = ase.build.bulk("C", "diamond", a=3.567, cubic=True)
-    calc = NequixCalculator(model_path="models/nequix-mp-1.nqx")
+    calc = NequixCalculator(
+        model_name="nequix-mp-1", backend=backend, kernel=kernel, torch_compile=False
+    )
     atoms.calc = calc
 
     energy = atoms.get_potential_energy()

@@ -1,57 +1,68 @@
 from typing import Optional
 
-import e3nn_jax as e3nn
-import equinox as eqx
-import jax
-import jax.numpy as jnp
+import torch
+import torch.nn as nn
+from e3nn import o3
 
 
 # based on https://github.com/facebookresearch/fairchem/blob/977a803/src/fairchem/core/models/esen/nn/layer_norm.py#L229
 # from ESEN which is based on EquiformerV2
-class RMSLayerNorm(eqx.Module):
-    irreps: e3nn.Irreps = eqx.field(static=True)
-    eps: float = eqx.field(static=True)
-    affine: bool = eqx.field(static=True)
-    centering: bool = eqx.field(static=True)
-    std_balance_degrees: bool = eqx.field(static=True)
+class RMSLayerNorm(torch.nn.Module):
+    irreps: o3.Irreps
+    eps: float
+    affine: bool
+    centering: bool
+    std_balance_degrees: bool
 
-    affine_weight: Optional[list[jax.Array]]
-    affine_bias: Optional[list[jax.Array]]
+    affine_weight: Optional[list[torch.Tensor]]
+    affine_bias: Optional[list[torch.Tensor]]
 
     def __init__(
         self,
-        irreps: e3nn.Irreps,
+        irreps: o3.Irreps,
         eps: float = 1e-12,
         affine: bool = True,
         centering: bool = True,
         std_balance_degrees: bool = True,
     ):
-        self.irreps = e3nn.Irreps(irreps)
+        super().__init__()
+
+        self.irreps = o3.Irreps(irreps)
         self.eps = eps
         self.affine = affine
         self.centering = centering
         self.std_balance_degrees = std_balance_degrees
 
         if self.affine:
-            self.affine_weight = [jnp.ones(irr.mul) for irr in self.irreps]
+            self.affine_weight = nn.ParameterList(
+                [nn.Parameter(torch.ones(irr.mul)) for irr in self.irreps]
+            )
 
             if self.centering:
-                self.affine_bias = [
-                    jnp.zeros(irr.mul) if irr.ir.l == 0 else None for irr in self.irreps
-                ]
+                self.affine_bias = nn.ParameterList(
+                    [
+                        nn.Parameter(torch.zeros(irr.mul)) if irr.ir.l == 0 else None
+                        for irr in self.irreps
+                    ]
+                )
             else:
                 self.affine_bias = None
         else:
             self.affine_weight = None
             self.affine_bias = None
 
-    def __call__(self, node_input: e3nn.IrrepsArray) -> e3nn.IrrepsArray:
+        input_slices = []
+        for input_slice in irreps.slices():
+            input_slices.append(input_slice)
+        self.input_slices = input_slices
+
+    def forward(self, node_input: torch.Tensor) -> torch.Tensor:
         input_chunks = []
         norms = []
-
-        for i, (irr, x) in enumerate(zip(node_input.irreps, node_input.chunks)):
+        for i, (irr, input_slice) in enumerate(zip(self.irreps, self.input_slices)):
+            x = node_input[:, input_slice].reshape(-1, irr.mul, irr.ir.dim)
             if self.centering and irr.ir.l == 0:
-                x = x - jnp.mean(x, axis=-2, keepdims=True)
+                x = x - x.mean(dim=-2, keepdim=True)
             input_chunks.append(x)
 
             if self.std_balance_degrees:
@@ -65,11 +76,11 @@ class RMSLayerNorm(eqx.Module):
                 raise NotImplementedError("not implemented")
 
         # sum across irreps (because we already weight by 1 / len(self.irreps))
-        norm = jnp.concatenate(norms, axis=-1).sum(axis=-1, keepdims=True)
-        norm = jnp.pow(norm + self.eps, -0.5)
+        norm = torch.cat(norms, dim=-1).sum(dim=-1, keepdim=True)
+        norm = torch.pow(norm + self.eps, -0.5)
 
         out_chunks = []
-        for i, (irr, x) in enumerate(zip(node_input.irreps, input_chunks)):
+        for i, (irr, x) in enumerate(zip(self.irreps, input_chunks)):
             if self.affine_weight is not None:
                 x = x * self.affine_weight[i][:, None]
 
@@ -78,6 +89,7 @@ class RMSLayerNorm(eqx.Module):
             if self.affine_bias is not None and irr.ir.l == 0:
                 out = out + self.affine_bias[i][:, None]
 
+            out = out.reshape(-1, irr.mul * irr.ir.dim)
             out_chunks.append(out)
 
-        return e3nn.from_chunks(node_input.irreps, out_chunks, node_input.shape[:-1])
+        return torch.cat(out_chunks, dim=-1)

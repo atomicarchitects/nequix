@@ -4,19 +4,17 @@ import os
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Optional
 
 import cloudpickle
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jraph
-import numpy as np
 import optax
 import yaml
-import wandb
 from wandb_osh.hooks import TriggerWandbSyncHook
 
+import wandb
 from nequix.data import (
     DataLoader,
     Dataset,
@@ -106,13 +104,17 @@ def loss(model, batch, energy_weight, force_weight, stress_weight, loss_type="hu
     }
 
 
-def evaluate(model, dataloader, energy_weight=1.0, force_weight=1.0, stress_weight=1.0, loss_type="huber"):
+def evaluate(
+    model, dataloader, energy_weight=1.0, force_weight=1.0, stress_weight=1.0, loss_type="huber"
+):
     """Return loss and RMSE of energy and force in eV and eV/Å respectively"""
     total_metrics = defaultdict(int)
     total_count = 0
     for batch in prefetch(dataloader):
         n_graphs = jnp.sum(jraph.get_graph_padding_mask(batch))
-        val_loss, metrics = loss(model, batch, energy_weight, force_weight, stress_weight, loss_type)
+        val_loss, metrics = loss(
+            model, batch, energy_weight, force_weight, stress_weight, loss_type
+        )
         total_metrics["loss"] += val_loss * n_graphs
         for key, value in metrics.items():
             total_metrics[key] += value * n_graphs
@@ -167,6 +169,7 @@ def train(config_path: str):
         split="train",
         cutoff=config["cutoff"],
         valid_frac=config["valid_frac"],
+        backend="jax",
     )
     val_dataset = Dataset(
         file_path=config["train_path"],
@@ -175,6 +178,7 @@ def train(config_path: str):
         split="val",
         cutoff=config["cutoff"],
         valid_frac=config["valid_frac"],
+        backend="jax",
     )
 
     if "atom_energies" in config:
@@ -247,7 +251,6 @@ def train(config_path: str):
 
     param_count = sum(p.size for p in jax.tree.flatten(eqx.filter(model, eqx.is_array))[0])
     wandb.run.summary["param_count"] = param_count
-
 
     # NB: this is not exact because of dynamic batching but should be close enough
     steps_per_epoch = len(train_dataset) // (config["batch_size"] * jax.device_count())

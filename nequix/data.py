@@ -1,6 +1,6 @@
+import multiprocessing
 import queue
 import threading
-import multiprocessing
 from pathlib import Path
 
 import ase
@@ -43,7 +43,54 @@ def preprocess_graph(
     return graph_dict
 
 
-def dict_to_graphstuple(graph_dict: dict) -> jraph.GraphsTuple:
+def dict_to_pytorch_geometric(graph_dict: dict):
+    import torch
+    from torch_geometric.data import Data
+
+    """Convert graph dictionary to PyTorch Geometric Data object"""
+    # Convert numpy arrays to torch tensors
+    species = torch.from_numpy(graph_dict["species"]).long()  # Node features (atomic species)
+    positions = torch.from_numpy(graph_dict["positions"])  # Node positions
+
+    # Edge indices (PyG expects [2, num_edges] format)
+    edge_index = torch.stack(
+        [torch.from_numpy(graph_dict["senders"]), torch.from_numpy(graph_dict["receivers"])], dim=0
+    ).long()
+
+    energy = None if "energy" not in graph_dict else torch.from_numpy(graph_dict["energy"])
+    forces = None if "forces" not in graph_dict else torch.from_numpy(graph_dict["forces"])
+    stress = (
+        None if "stress" not in graph_dict else torch.from_numpy(graph_dict["stress"])[None, :, :]
+    )
+
+    # Edge attributes
+    edge_attr = torch.from_numpy(graph_dict["shifts"])
+
+    cell = torch.from_numpy(graph_dict["cell"])[None, :, :]
+
+    n_node = torch.from_numpy(graph_dict["n_node"])
+    n_edge = torch.from_numpy(graph_dict["n_edge"])
+
+    # Create Data object
+    data = Data(
+        n_node=n_node,
+        n_edge=n_edge,
+        energy=energy,
+        forces=forces,
+        stress=stress,
+        x=species,
+        positions=positions,
+        edge_index=edge_index,
+        edge_attr=edge_attr,
+        cell=cell,
+    )
+
+    return data
+
+
+def dict_to_graphstuple(graph_dict: dict):
+    import jraph
+
     return jraph.GraphsTuple(
         n_node=graph_dict["n_node"],
         n_edge=graph_dict["n_edge"],
@@ -115,6 +162,7 @@ class Dataset:
         cutoff: float = 5.0,
         valid_frac: float = 0.1,
         seed: int = 42,
+        backend: str = "jax",
     ):
         self.atomic_indices = atomic_numbers_to_indices(atomic_numbers)
         file_path = Path(file_path)
@@ -142,6 +190,8 @@ class Dataset:
             train_idx, valid_idx = np.split(perm, [int(len(perm) * (1 - valid_frac))])
             indices = train_idx if split == "train" else valid_idx
             self.index_map = [self.index_map[i] for i in indices]
+
+        self.backend = backend
 
     @property
     def file_handles(self):
@@ -190,13 +240,16 @@ class Dataset:
     def __len__(self) -> int:
         return len(self.index_map)
 
-    def __getitem__(self, idx: int) -> jraph.GraphsTuple:
+    def __getitem__(self, idx: int):
         file_idx, local_idx = self.index_map[idx]
         grp = self.file_handles[file_idx][f"graph_{local_idx}"]
         graph_dict = {}
         for key in grp:
             graph_dict[key] = grp[key][:]
-        return dict_to_graphstuple(graph_dict)
+        if self.backend == "jax":
+            return dict_to_graphstuple(graph_dict)
+        elif self.backend == "torch":
+            return dict_to_pytorch_geometric(graph_dict)
 
     def __del__(self):
         if hasattr(self, "_file_handles"):
@@ -432,4 +485,3 @@ def dataset_stats(dataset: Dataset, atom_energies: list[float]) -> dict:
     print("computed dataset statistics, add to config yml file to avoid recomputing:")
     print(yaml.dump(stats))
     return stats
-
