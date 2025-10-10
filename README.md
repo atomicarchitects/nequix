@@ -85,7 +85,7 @@ size, so keep in mind).
 ```bibtex
 @article{koker2025training,
   title={Training a foundation model for materials on a budget},
-  author={Koker, Teddy and Smidt, Tess},
+  author={Koker, Teddy and Kotak, Mit and Smidt, Tess},
   journal={arXiv preprint arXiv:2508.16067},
   year={2025}
 }
