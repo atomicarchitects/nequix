@@ -1,0 +1,64 @@
+[project]
+name = "nequix"
+version = "0.3.0"
+description = "Nequix source code"
+readme = "README.md"
+authors = [
+    { name = "Teddy Koker", email = "teddy.koker@gmail.com" }
+]
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+
+dependencies = [
+    "jax[cuda12]>=0.4.34; sys_platform == 'linux'",
+    "jax>=0.4.34; sys_platform == 'darwin'",
+    "e3nn-jax>=0.20.8",
+    "jraph>=0.0.6.dev0",
+    "equinox>=0.11.11",
+    "optax>=0.2.5",
+    "ase>=3.24.0",
+    "tqdm>=4.67.1",
+    "wandb>=0.19.11",
+    "pyyaml>=6.0.2",
+    "matscipy>=1.1.1",
+    "h5py>=3.14.0",
+    "wandb-osh>=1.2.2",
+    "cloudpickle>=3.1.1",
+]
+
+[project.urls]
+Homepage = "https://pypi.org/project/nequix/"
+Repository = "https://github.com/atomicarchitects/nequix"
+
+
+[project.scripts]
+nequix_train = "nequix.train:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[tool.hatch.build]
+include = ["nequix/*"]
+
+[dependency-groups]
+dev = [
+    "ipython>=8.36.0",
+    "pandas>=2.3.1",
+    "pre-commit>=4.1.0",
+    "pytest>=8.3.5",
+    "pytest-benchmark>=5.1.0",
+]
+
+[tool.ruff]
+line-length = 100
+
+[project.optional-dependencies]
+torch = [
+  "e3nn>=0.5.8",
+  "openequivariance==0.4.1",
+  "torch",
+  "torch-geometric>=2.6.1",
+  "setuptools",
+]
