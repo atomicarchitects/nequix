@@ -1616,10 +1616,6 @@ torch = [
     { name = "setuptools" },
     { name = "torch" },
     { name = "torch-geometric" },
-<<<<<<< HEAD
-    { name = "triton" },
-=======
->>>>>>> kernel_flag
 ]
 
 [package.dev-dependencies]
