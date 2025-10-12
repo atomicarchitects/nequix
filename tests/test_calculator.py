@@ -8,9 +8,7 @@ from nequix.calculator import NequixCalculator
 @pytest.mark.parametrize("backend, kernel", [("torch", True), ("torch", False), ("jax", False)])
 def test_calculator_nequix_mp_1(backend, kernel):
     atoms = ase.build.bulk("C", "diamond", a=3.567, cubic=True)
-    calc = NequixCalculator(
-        model_name="nequix-mp-1", backend=backend, kernel=kernel, torch_compile=False
-    )
+    calc = NequixCalculator(model_name="nequix-mp-1", backend=backend, kernel_flag=kernel)
     atoms.calc = calc
 
     energy = atoms.get_potential_energy()

@@ -80,6 +80,16 @@ config is per-device, so you should be able to run this on any number of GPUs
 (although hyperparameters like learning rate are often sensitive to global batch
 size, so keep in mind).
 
+### FAQS
+
+- How do I switch off kernel/compile for the Torch backend ?
+
+```bash
+...
+atoms.calc = NequixCalculator("nequix-mp-1", backend="torch", compile_flag=False, kernel_flag=False)
+...
+```
+
 ## Citation
 
 ```bibtex
