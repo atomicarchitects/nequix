@@ -24,9 +24,9 @@ class NequixCalculator(Calculator):
     implemented_properties = ["energy", "free_energy", "forces", "stress"]
 
     URLS = {
-        "nequix-mp-1.nqx": "https://figshare.com/files/57245573",
+        "nequix-mp-1": "https://figshare.com/files/57245573",
         "nequix-mp-1-kernel": "https://www.dropbox.com/scl/fi/0zavqdbl4n7ep9xxm12lo/nequix-mp-1-kernel.pt?rlkey=7qx8d0pdeo0p3xa74ygkcv655&st=th8f8j12&dl=1",
-        "nequix-mp-1-no-kernel": "https://www.dropbox.com/scl/fi/c62lm1b12irf2afezwsud/nequix-mp-1-no-kernel.pt?rlkey=ywpg5qy75e4pco93l1oswmlb6&st=gv86ect0&dl=1",
+        "nequix-mp-1-no-kernel": "https://www.dropbox.com/scl/fi/c62lm1b12irf2afezwsud/nequix-mp-1-no-kernel.pt?rlkey=ywpg5qy75e4pco93l1oswmlb6&st=w17qpl2k&dl=1",
     }
 
     def __init__(
@@ -35,8 +35,8 @@ class NequixCalculator(Calculator):
         model_path: str = None,
         capacity_multiplier: float = 1.1,  # Only for jax backend
         backend: str = "jax",
-        torch_compile: bool = True,  # Only for torch backend
-        kernel: bool = True,  # Only for torch backend
+        use_compile: bool = True,  # Only for torch backend
+        use_kernel: bool = True,  # Only for torch backend
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -44,8 +44,8 @@ class NequixCalculator(Calculator):
             if backend == "torch":
                 import torch
 
-                kernel = "kernel" if torch.cuda.is_available() and kernel else "no-kernel"
-                model_name = f"{model_name}-{kernel}"
+                kernel_name = "kernel" if torch.cuda.is_available() and use_kernel else "no-kernel"
+                model_name = f"{model_name}-{kernel_name}"
 
             filename = f"{model_name}.{file_format_mapper[backend]}"
             for base_path in [Path("./models/"), Path("~/.cache/nequix/models/").expanduser()]:
@@ -72,7 +72,7 @@ class NequixCalculator(Calculator):
             self.model.eval()
             # setting compile_state to True would skip compilation else will compile for the first time
             # Only use compile for GPUs
-            self.compile_state = False if torch_compile and torch.cuda.is_available() else True
+            self.compile_state = False if use_compile and torch.cuda.is_available() else True
         else:
             raise ValueError(f"Backend {backend} not supported")
 

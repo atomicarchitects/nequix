@@ -36,6 +36,16 @@ atoms.calc = NequixCalculator("nequix-mp-1", backend="torch")
 ...
 ```
 
+#### NequixCalculator
+
+Arguments
+- `model_name` (str, default "nequix-mp-1"): Pretrained model alias to load or download.
+- `model_path` (str | Path, optional): Path to local checkpoint; overrides `model_name`.
+- `backend` ({"jax", "torch"}, default "jax"): Compute backend.
+- `capacity_multiplier` (float, default 1.1): JAX-only; padding factor to limit recompiles.
+- `use_compile` (bool, default True): Torch-only; on GPU, uses `torch.compile()`.
+- `use_kernel` (bool, default True): Torch-only; on GPU, use [OpenEquivariance](https://github.com/PASSIONLab/OpenEquivariance) kernels.
+
 ### Training
 
 Models are trained with the `nequix_train` command using a single `.yml`
@@ -75,10 +85,11 @@ Then start the training run. The first time this is run it will preprocess the d
 nequix_train configs/nequix-mp-1.yml
 ```
 
-This will take less than 125 hours on a single 4 x A100 node. The `batch_size` in the
+This will take less than 125 hours on a single 4 x A100 node (<25 hours using the torch + kernels backend). The `batch_size` in the
 config is per-device, so you should be able to run this on any number of GPUs
 (although hyperparameters like learning rate are often sensitive to global batch
 size, so keep in mind).
+
 
 ## Citation
 
