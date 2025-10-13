@@ -86,7 +86,7 @@ size, so keep in mind).
 
 ```bash
 ...
-atoms.calc = NequixCalculator("nequix-mp-1", backend="torch", compile_flag=False, kernel_flag=False)
+atoms.calc = NequixCalculator("nequix-mp-1", backend="torch", use_compile=False, use_kernel=False)
 ...
 ```
 
