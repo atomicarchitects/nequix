@@ -346,7 +346,6 @@ class Nequix(eqx.Module):
             minus_forces, node_energies = eqx.filter_grad(total_energy_fn, has_aux=True)(
                 data.nodes["positions"]
             )
-            virial = None
         else:
             # compute forces and stress as gradient of total energy w.r.t positions and strain
             def total_energy_fn(positions_eps: tuple[jax.Array, jax.Array]):
