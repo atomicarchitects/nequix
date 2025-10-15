@@ -30,7 +30,7 @@ def preprocess_graph(
         "species": np.array([atom_indices[n] for n in atoms.get_atomic_numbers()]).astype(np.int32),
         "positions": atoms.positions.astype(np.float32),
         "shifts": shift.astype(np.float32),
-        "cell": atoms.cell.astype(np.float32),
+        "cell": atoms.cell.astype(np.float32) if atoms.pbc.all() else None,
     }
     if targets:
         graph_dict["forces"] = atoms.get_forces().astype(np.float32)
@@ -103,7 +103,7 @@ def dict_to_graphstuple(graph_dict: dict):
         senders=graph_dict["senders"],
         receivers=graph_dict["receivers"],
         globals={
-            "cell": graph_dict["cell"][None, ...],
+            "cell": graph_dict["cell"][None, ...] if graph_dict["cell"] is not None else None,
             "energy": graph_dict["energy"] if "energy" in graph_dict else None,
             "stress": graph_dict["stress"][None, ...] if "stress" in graph_dict else None,
         },
