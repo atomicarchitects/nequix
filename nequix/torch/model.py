@@ -648,7 +648,7 @@ class NequixTorch(torch.nn.Module):
         else:
             r = positions[edge_index[0]] - positions[edge_index[1]]
             node_energies = self.node_energies(r, species, edge_index[0], edge_index[1])
-            minus_forces = -torch.autograd.grad(
+            minus_forces = torch.autograd.grad(
                 outputs=[node_energies.sum()],
                 inputs=[positions],
                 create_graph=False,
