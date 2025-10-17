@@ -613,40 +613,48 @@ class NequixTorch(torch.nn.Module):
         n_edge: torch.Tensor,
         n_graph: torch.Tensor,
     ):
-        eps = torch.zeros_like(cell)
-
-        # Enable gradient computation for positions
         positions.requires_grad_(True)
-        eps.requires_grad_(True)
+        if cell is not None:
+            eps = torch.zeros_like(cell)
+            eps.requires_grad_(True)
+            eps_sym = (eps + eps.swapaxes(1, 2)) / 2
+            positions_strain = positions + torch.bmm(
+                positions.unsqueeze(-2), torch.index_select(eps_sym, 0, n_graph)
+            ).squeeze(-2)
+            cell_strain = cell + torch.bmm(cell, eps_sym)
+            r = torch.index_select(positions_strain, 0, edge_index[0]) - torch.index_select(
+                positions_strain, 0, edge_index[1]
+            )
+            edge_index_batches = torch.index_select(n_graph, 0, edge_index[0])
+            # bj <- b1j <- b1j + b1i @ bij
+            r = torch.baddbmm(
+                r.view(-1, 1, 3),
+                edge_attr.view(-1, 1, 3),
+                torch.index_select(cell_strain, 0, edge_index_batches),
+            ).view(-1, 3)
 
-        eps_sym = (eps + eps.swapaxes(1, 2)) / 2
-        positions_strain = positions + torch.bmm(
-            positions.unsqueeze(-2), torch.index_select(eps_sym, 0, n_graph)
-        ).squeeze(-2)
-        cell_strain = cell + torch.bmm(cell, eps_sym)
-        r = torch.index_select(positions_strain, 0, edge_index[0]) - torch.index_select(
-            positions_strain, 0, edge_index[1]
-        )
-        edge_index_batches = torch.index_select(n_graph, 0, edge_index[0])
-        # bj <- b1j <- b1j + b1i @ bij
-        r = torch.baddbmm(
-            r.view(-1, 1, 3),
-            edge_attr.view(-1, 1, 3),
-            torch.index_select(cell_strain, 0, edge_index_batches),
-        ).view(-1, 3)
+            # Note: if we try to use senders/receiver from graph_dict then batching gets messed up
+            node_energies = self.node_energies(r, species, edge_index[0], edge_index[1])
 
-        # Note: if we try to use senders/receiver from graph_dict then batching gets messed up
-        node_energies = self.node_energies(r, species, edge_index[0], edge_index[1])
+            minus_forces, virial = torch.autograd.grad(
+                outputs=[node_energies.sum()],
+                inputs=[positions, eps],
+                create_graph=True,
+                materialize_grads=True,
+            )
 
-        minus_forces, virial = torch.autograd.grad(
-            outputs=[node_energies.sum()],
-            inputs=[positions, eps],
-            create_graph=True,
-            materialize_grads=True,
-        )
-
-        det = torch.abs(torch.linalg.det(cell))[:, None, None]
-        stress = virial / det
+            det = torch.abs(torch.linalg.det(cell))[:, None, None]
+            stress = virial / det
+        else:
+            r = positions[edge_index[0]] - positions[edge_index[1]]
+            node_energies = self.node_energies(r, species, edge_index[0], edge_index[1])
+            minus_forces = -torch.autograd.grad(
+                outputs=[node_energies.sum()],
+                inputs=[positions],
+                create_graph=False,
+                materialize_grads=False,
+            )[0]
+            stress = None
         return node_energies[:, 0], -minus_forces, stress
 
 

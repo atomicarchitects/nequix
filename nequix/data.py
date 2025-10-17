@@ -66,7 +66,9 @@ def dict_to_pytorch_geometric(graph_dict: dict):
     # Edge attributes
     edge_attr = torch.from_numpy(graph_dict["shifts"])
 
-    cell = torch.from_numpy(graph_dict["cell"])[None, :, :]
+    cell = (
+        torch.from_numpy(graph_dict["cell"])[None, :, :] if graph_dict["cell"] is not None else None
+    )
 
     n_node = torch.from_numpy(graph_dict["n_node"])
     n_edge = torch.from_numpy(graph_dict["n_edge"])

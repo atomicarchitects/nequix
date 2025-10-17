@@ -6,6 +6,7 @@ import jraph
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 from ase.stress import full_3x3_to_voigt_6_stress
+from ase.geometry import complete_cell
 
 from nequix.data import (
     atomic_numbers_to_indices,
@@ -84,6 +85,7 @@ class NequixCalculator(Calculator):
 
     def calculate(self, atoms=None, properties=None, system_changes=all_changes):
         Calculator.calculate(self, atoms)
+        atoms.cell = complete_cell(atoms.cell)  # avoids singular cell
         processed_graph = preprocess_graph(atoms, self.atom_indices, self.cutoff, False)
         if self.backend == "jax":
             graph = dict_to_graphstuple(processed_graph)
@@ -121,7 +123,7 @@ class NequixCalculator(Calculator):
                             graph.positions,
                             graph.edge_attr,
                             graph.edge_index,
-                            graph.cell,
+                            graph.cell if hasattr(graph, "cell") else None,
                             graph.n_node,
                             graph.n_edge,
                             graph.n_graph,
@@ -136,7 +138,7 @@ class NequixCalculator(Calculator):
                 graph.positions,
                 graph.edge_attr,
                 graph.edge_index,
-                graph.cell,
+                graph.cell if hasattr(graph, "cell") else None,
                 graph.n_node,
                 graph.n_edge,
                 graph.n_graph,
@@ -149,7 +151,7 @@ class NequixCalculator(Calculator):
             energy, forces, stress = (
                 energy.detach().cpu(),
                 forces.detach().cpu(),
-                stress.detach().cpu(),
+                stress.detach().cpu() if stress is not None else None,
             )
 
         # take energy and forces without padding
@@ -157,4 +159,6 @@ class NequixCalculator(Calculator):
         self.results["energy"] = energy
         self.results["free_energy"] = energy
         self.results["forces"] = np.array(forces)
-        self.results["stress"] = full_3x3_to_voigt_6_stress(np.array(stress[0]))
+        self.results["stress"] = (
+            full_3x3_to_voigt_6_stress(np.array(stress[0])) if stress is not None else None
+        )
