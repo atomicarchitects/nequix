@@ -118,16 +118,14 @@ class NequixCalculator(Calculator):
                         _allow_non_fake_inputs=True,
                         _error_on_data_dependent_ops=True,
                     )(
-                        *[
-                            graph.x,
-                            graph.positions,
-                            graph.edge_attr,
-                            graph.edge_index,
-                            graph.cell if hasattr(graph, "cell") else None,
-                            graph.n_node,
-                            graph.n_edge,
-                            graph.n_graph,
-                        ]
+                        graph.x,
+                        graph.positions,
+                        graph.edge_attr,
+                        graph.edge_index,
+                        getattr(graph, "cell", None),
+                        graph.n_node,
+                        graph.n_edge,
+                        graph.n_graph,
                     )
                 )
                 self.compile_state = True
@@ -138,7 +136,7 @@ class NequixCalculator(Calculator):
                 graph.positions,
                 graph.edge_attr,
                 graph.edge_index,
-                graph.cell if hasattr(graph, "cell") else None,
+                getattr(graph, "cell", None),
                 graph.n_node,
                 graph.n_edge,
                 graph.n_graph,
