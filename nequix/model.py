@@ -334,41 +334,54 @@ class Nequix(eqx.Module):
         return node_energies.array
 
     def __call__(self, data: jraph.GraphsTuple):
-        # compute forces and stress as gradient of total energy with respect to positions and strain
-        def total_energy_fn(positions_eps: tuple[jax.Array, jax.Array]):
-            positions, eps = positions_eps
-            eps_sym = (eps + eps.swapaxes(1, 2)) / 2
-            eps_sym_per_node = jnp.repeat(
-                eps_sym,
-                data.n_node,
-                axis=0,
-                total_repeat_length=data.nodes["positions"].shape[0],
-            )
-            # apply strain to positions and cell
-            positions = positions + jnp.einsum("ik,ikj->ij", positions, eps_sym_per_node)
-            cell = data.globals["cell"] + jnp.einsum("bij,bjk->bik", data.globals["cell"], eps_sym)
-            cell_per_edge = jnp.repeat(
-                cell,
-                data.n_edge,
-                axis=0,
-                total_repeat_length=data.edges["shifts"].shape[0],
-            )
-            offsets = jnp.einsum("ij,ijk->ik", data.edges["shifts"], cell_per_edge)
-            r = positions[data.senders] - positions[data.receivers] + offsets
-            node_energies = self.node_energies(
-                r, data.nodes["species"], data.senders, data.receivers
-            )
-            return jnp.sum(node_energies), node_energies
+        if data.globals["cell"] is None:
+            # compute forces and stress as gradient of total energy w.r.t positions
+            def total_energy_fn(positions: jax.Array):
+                r = positions[data.senders] - positions[data.receivers]
+                node_energies = self.node_energies(
+                    r, data.nodes["species"], data.senders, data.receivers
+                )
+                return jnp.sum(node_energies), node_energies
 
-        eps = jnp.zeros_like(data.globals["cell"])
+            minus_forces, node_energies = eqx.filter_grad(total_energy_fn, has_aux=True)(
+                data.nodes["positions"]
+            )
+        else:
+            # compute forces and stress as gradient of total energy w.r.t positions and strain
+            def total_energy_fn(positions_eps: tuple[jax.Array, jax.Array]):
+                positions, eps = positions_eps
+                eps_sym = (eps + eps.swapaxes(1, 2)) / 2
+                eps_sym_per_node = jnp.repeat(
+                    eps_sym,
+                    data.n_node,
+                    axis=0,
+                    total_repeat_length=data.nodes["positions"].shape[0],
+                )
+                # apply strain to positions and cell
+                positions = positions + jnp.einsum("ik,ikj->ij", positions, eps_sym_per_node)
+                cell = data.globals["cell"] + jnp.einsum(
+                    "bij,bjk->bik", data.globals["cell"], eps_sym
+                )
+                cell_per_edge = jnp.repeat(
+                    cell,
+                    data.n_edge,
+                    axis=0,
+                    total_repeat_length=data.edges["shifts"].shape[0],
+                )
+                offsets = jnp.einsum("ij,ijk->ik", data.edges["shifts"], cell_per_edge)
+                r = positions[data.senders] - positions[data.receivers] + offsets
+                node_energies = self.node_energies(
+                    r, data.nodes["species"], data.senders, data.receivers
+                )
+                return jnp.sum(node_energies), node_energies
 
-        (minus_forces, virial), node_energies = eqx.filter_grad(total_energy_fn, has_aux=True)(
-            (data.nodes["positions"], eps)
-        )
+            eps = jnp.zeros_like(data.globals["cell"])
+            (minus_forces, virial), node_energies = eqx.filter_grad(total_energy_fn, has_aux=True)(
+                (data.nodes["positions"], eps)
+            )
 
         # padded nodes may have nan forces, so we mask them
         node_mask = jraph.get_node_padding_mask(data)
-
         minus_forces = jnp.where(node_mask[:, None], minus_forces, 0.0)
 
         # compute total energies across each subgraph
@@ -379,13 +392,15 @@ class Nequix(eqx.Module):
             indices_are_sorted=True,
         )
 
-        det = jnp.abs(jnp.linalg.det(data.globals["cell"]))[:, None, None]
-        det = jnp.where(det > 0.0, det, 1.0)  # padded graphs have det = 0
-        stress = virial / det
-
-        # padded stress may be nan, so we mask them
-        graph_mask = jraph.get_graph_padding_mask(data)
-        stress = jnp.where(graph_mask[:, None, None], stress, 0.0)
+        if data.globals["cell"] is None:
+            stress = None
+        else:
+            det = jnp.abs(jnp.linalg.det(data.globals["cell"]))[:, None, None]
+            det = jnp.where(det > 0.0, det, 1.0)  # padded graphs have det = 0
+            stress = virial / det
+            # padded stress may be nan, so we mask them
+            graph_mask = jraph.get_graph_padding_mask(data)
+            stress = jnp.where(graph_mask[:, None, None], stress, 0.0)
 
         return graph_energies[:, 0], -minus_forces, stress
 

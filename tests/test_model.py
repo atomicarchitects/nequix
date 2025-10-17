@@ -63,13 +63,21 @@ def test_model():
     assert forces.shape == batch_padded.nodes["forces"].shape
     assert stress.shape == batch_padded.globals["cell"].shape
 
-    # batch = default_collate_fn([batch, batch])
     batch = jraph.batch_np([batch, batch])
     batch_padded = jraph.pad_with_graphs(batch, n_node=7, n_edge=7, n_graph=3)
     energy, forces, stress = model(batch_padded)
     assert energy.shape == batch_padded.globals["energy"].shape
     assert forces.shape == batch_padded.nodes["forces"].shape
     assert stress.shape == batch_padded.globals["cell"].shape
+
+    # check that stress is None if cell is None
+    batch = dummy_graph()
+    batch = batch._replace(globals={**batch.globals, "cell": None})
+    batch_padded = jraph.pad_with_graphs(batch, n_node=4, n_edge=4, n_graph=2)
+    energy, forces, stress = model(batch_padded)
+    assert energy.shape == batch_padded.globals["energy"].shape
+    assert forces.shape == batch_padded.nodes["forces"].shape
+    assert stress is None
 
 
 @pytest.mark.parametrize("centering", [True, False])
@@ -168,7 +176,6 @@ def test_weight_decay_mask():
     # should be weight decay on e3nn linear layers and normal linear weights
     assert all(mask.layers[0].linear_1._weights.values())
     assert mask.layers[0].radial_mlp.layers[0].weights
-
 
     # no weight decay on atom energies, biases, or layer norms
     assert not mask.atom_energies

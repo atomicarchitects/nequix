@@ -80,6 +80,23 @@ def test_model():
     assert forces.shape == batch.forces.shape
     assert stress.shape == batch.cell.shape
 
+    batch = dummy_graph()
+    batch.cell = None
+    energy_per_atom, forces, stress = model(
+        batch.x,
+        batch.positions,
+        batch.edge_attr,
+        batch.edge_index,
+        None,
+        batch.n_node,
+        batch.n_edge,
+        batch.n_graph,
+    )
+    energy = scatter(energy_per_atom, batch.n_graph, dim=0, dim_size=batch.n_node.size(0))
+    assert energy.shape == batch.energy.shape
+    assert forces.shape == batch.forces.shape
+    assert stress is None
+
 
 @pytest.mark.parametrize("centering", [True, False])
 def test_layer_norm(centering):
