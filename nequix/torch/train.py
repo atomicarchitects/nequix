@@ -379,14 +379,16 @@ def train(config_path: str):
 
     # Initialize step and checkpoint loading variables
     step = 0
+    start_step = 0
     start_epoch = 0
     best_val_loss = float("inf")
 
     # Load checkpoint if resuming
     if "resume_from" in config:
-        model, ema_model, optimizer, scheduler, step, start_epoch, best_val_loss = (
+        model, ema_model, optimizer, scheduler, start_step, start_epoch, best_val_loss = (
             load_training_state(config["resume_from"], model, ema_model, optimizer, scheduler)
         )
+        step = start_step
 
     # Only initialize wandb on rank 0
     if rank == 0:
@@ -460,7 +462,10 @@ def train(config_path: str):
 
         start_time = time.time()
 
-        for batch in train_loader:
+        for i, batch in enumerate(train_loader):
+            if epoch == start_epoch and i < start_step:
+                continue
+
             batch_time = time.time() - start_time
             start_time = time.time()
 
@@ -483,6 +488,30 @@ def train(config_path: str):
                 wandb.log(logs, step=step)
                 print(f"step: {step}, logs: {logs}")
                 wandb_sync()
+
+                save_training_state(
+                    Path(wandb.run.dir) / "state.pkl",
+                    model,
+                    ema_model,
+                    optimizer,
+                    scheduler,
+                    step,
+                    epoch,
+                    best_val_loss,
+                )
+
+                if config["state_path"] is not None:
+                    save_training_state(
+                        config["state_path"],
+                        model,
+                        ema_model,
+                        optimizer,
+                        scheduler,
+                        step,
+                        epoch,
+                        best_val_loss,
+                    )
+
             start_time = time.time()
 
         if rank == 0:
@@ -501,18 +530,6 @@ def train(config_path: str):
                 if hasattr(wandb, "run") and wandb.run is not None:
                     save_model(Path(wandb.run.dir) / "checkpoint.pt", model_to_save, config)
 
-            if hasattr(wandb, "run") and wandb.run is not None:
-                save_training_state(
-                    Path(wandb.run.dir) / "state.pkl",
-                    model,
-                    ema_model,
-                    optimizer,
-                    scheduler,
-                    step,
-                    epoch + 1,
-                    best_val_loss,
-                )
-
             if "state_path" in config:
                 save_training_state(
                     config["state_path"],
@@ -522,6 +539,7 @@ def train(config_path: str):
                     scheduler,
                     step,
                     epoch + 1,
+                    step,
                     best_val_loss,
                 )
 
