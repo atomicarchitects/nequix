@@ -530,19 +530,6 @@ def train(config_path: str):
                 if hasattr(wandb, "run") and wandb.run is not None:
                     save_model(Path(wandb.run.dir) / "checkpoint.pt", model_to_save, config)
 
-            if "state_path" in config:
-                save_training_state(
-                    config["state_path"],
-                    model,
-                    ema_model,
-                    optimizer,
-                    scheduler,
-                    step,
-                    epoch + 1,
-                    step,
-                    best_val_loss,
-                )
-
             logs = {}
             for key, value in val_metrics.items():
                 logs[f"val/{key}"] = value
