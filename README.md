@@ -58,6 +58,7 @@ or for Torch
 
 ```bash
 # Single GPU
+uv sync --extra torch
 uv run nequix/torch/train.py <config>.yml
 # Multi-GPU
 uv run torchrun --nproc_per_node=<gpus> nequix/torch/train.py <config>.yml
