@@ -183,7 +183,7 @@ def train(config_path: str):
     config["cache_dir"] = config.get("cache_dir") or os.environ.get("TMPDIR")
 
     # Distributed training setup
-    is_distributed = config.get("distributed", False) and "RANK" in os.environ
+    is_distributed = "RANK" in os.environ
     if is_distributed:
         setup_ddp()
         local_rank = int(os.environ["LOCAL_RANK"])
