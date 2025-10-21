@@ -359,13 +359,12 @@ def train(config_path: str):
             lr=config["learning_rate"],
         )
 
-    # EMA model - deep copy of the original model (before DDP wrapping)
+    # EMA model - deep copy of the original model
     ema_model = copy.deepcopy(model).to(device)
 
     # Wrap model with DDP if distributed
     if is_distributed:
         model = DDP(model, device_ids=[local_rank], output_device=local_rank)
-        ema_model = DDP(ema_model, device_ids=[local_rank], output_device=local_rank)
 
     # Learning rate scheduler with warmup and cosine decay
     def lr_lambda(step):
