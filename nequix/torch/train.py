@@ -219,7 +219,8 @@ def train(config_path: str):
     if "atom_energies" in config:
         atom_energies = [config["atom_energies"][n] for n in config["atomic_numbers"]]
     else:
-        atom_energies = average_atom_energies(train_dataset)
+        raise NotImplementedError("average atom energies not implemented for torch backend")
+        # atom_energies = average_atom_energies(train_dataset)
 
     stats_keys = [
         "shift",
@@ -233,7 +234,8 @@ def train(config_path: str):
     if all(key in config for key in stats_keys):
         stats = {key: config[key] for key in stats_keys}
     else:
-        stats = dataset_stats(train_dataset, atom_energies)
+        raise NotImplementedError("dataset stats not implemented for torch backend")
+        # stats = dataset_stats(train_dataset, atom_energies)
 
     if is_distributed:
         train_sampler = DistributedSampler(
