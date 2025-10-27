@@ -445,14 +445,16 @@ def prefetch(loader, queue_size=4):
 
 
 # based on https://github.com/ACEsuit/mace/blob/d39cc6b/mace/data/utils.py#L300
-def average_atom_energies(dataset: Dataset) -> list[float]:
+def average_atom_energies(dataset: Dataset, backend: str = "jax") -> list[float]:
     """Compute the average energy of each species in the dataset."""
     atomic_indices = dataset.atomic_indices
     A = np.zeros((len(dataset), len(atomic_indices)), dtype=np.float32)
     B = np.zeros((len(dataset),), dtype=np.float32)
     for i, graph in tqdm(enumerate(dataset), total=len(dataset)):
-        A[i] = np.bincount(graph.nodes["species"], minlength=len(atomic_indices))
-        B[i] = graph.globals["energy"][0]
+        species = graph.nodes["species"] if backend == "jax" else graph.x.numpy()
+        energy = graph.globals["energy"][0] if backend == "jax" else graph.energy.numpy()
+        A[i] = np.bincount(species, minlength=len(atomic_indices))
+        B[i] = energy
     E0s = np.linalg.lstsq(A, B, rcond=None)[0].tolist()
     idx_to_atomic_number = {v: k for k, v in atomic_indices.items()}
     atom_energies = {idx_to_atomic_number[i]: e0 for i, e0 in enumerate(E0s)}
@@ -461,17 +463,23 @@ def average_atom_energies(dataset: Dataset) -> list[float]:
     return E0s
 
 
-def dataset_stats(dataset: Dataset, atom_energies: list[float]) -> dict:
+def dataset_stats(dataset: Dataset, atom_energies: list[float], backend: str = "jax") -> dict:
     """Compute the statistics of the dataset."""
     energies, forces, n_neighbors, n_nodes, n_edges = [], [], [], [], []
     atom_energies = np.array(atom_energies)
     for graph in tqdm(dataset, total=len(dataset)):
-        graph_e0 = np.sum(atom_energies[graph.nodes["species"]])
-        energies.append((graph.globals["energy"][0] - graph_e0) / graph.n_node)
-        forces.append(graph.nodes["forces"])
-        n_neighbors.append(graph.n_edge / graph.n_node)
-        n_nodes.append(graph.n_node)
-        n_edges.append(graph.n_edge)
+        species = graph.nodes["species"] if backend == "jax" else graph.x.numpy()
+        energy = graph.globals["energy"][0] if backend == "jax" else graph.energy.numpy()
+        force = graph.nodes["forces"] if backend == "jax" else graph.forces.numpy()
+        n_node = graph.n_node if backend == "jax" else graph.n_node.numpy()
+        n_edge = graph.n_edge if backend == "jax" else graph.n_edge.numpy()
+
+        graph_e0 = np.sum(atom_energies[species])
+        energies.append((energy - graph_e0) / n_node)
+        forces.append(force)
+        n_neighbors.append(n_edge / n_node)
+        n_nodes.append(n_node)
+        n_edges.append(n_edge)
     mean = np.mean(np.concatenate(energies, axis=0))
     rms = np.sqrt(np.mean(np.concatenate(forces, axis=0) ** 2))
     n_neighbors = np.mean(np.concatenate(n_neighbors, axis=0))
