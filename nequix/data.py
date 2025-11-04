@@ -1,12 +1,12 @@
 import multiprocessing
+from abc import ABC, abstractmethod
 import queue
+import bisect
 import threading
 from pathlib import Path
 
 import ase
-import ase.io
-import ase.neighborlist
-import h5py
+import ase.db
 import jax
 import jraph
 import matscipy.neighbours
@@ -117,146 +117,70 @@ def atomic_numbers_to_indices(atomic_numbers: list[int]) -> dict[int, int]:
     return {n: i for i, n in enumerate(sorted(atomic_numbers))}
 
 
-def preprocess_file(
-    file_path: str, atomic_indices: dict[int, int], cutoff: float
-) -> list[dict]:  # Now returns list of dicts
-    data = ase.io.read(file_path, index=":", format="extxyz")
-    return [preprocess_graph(atoms, atomic_indices, cutoff, True) for atoms in data]
-
-
-def save_graphs_to_hdf5(graphs, output_path, progress_bar=True):
-    """Save graphs to HDF5 file"""
-    with h5py.File(output_path, "w") as f:
-        f.attrs["n_graphs"] = len(graphs)
-        for i, graph_dict in enumerate(
-            tqdm(graphs, desc="saving graphs", disable=not progress_bar)
-        ):
-            grp = f.create_group(f"graph_{i}")
-            for key, value in graph_dict.items():
-                grp.create_dataset(key, data=value)
-
-
-def process_worker_files(args):
-    """Process files for one worker"""
-    worker_id, file_paths, output_path, atomic_indices, cutoff = args
-    all_graphs = []
-    for file_path in tqdm(
-        file_paths,
-        desc="reading graphs",
-        disable=worker_id != 0,
-    ):
-        data = ase.io.read(file_path, index=":", format="extxyz")
-        graphs = [preprocess_graph(atoms, atomic_indices, cutoff, True) for atoms in data]
-        all_graphs.extend(graphs)
-
-    save_graphs_to_hdf5(all_graphs, output_path, progress_bar=worker_id == 0)
-    return len(all_graphs)
-
-
-# pytorch-like dataset that reads xyz files and returns jraph.GraphsTuple
-class Dataset:
-    def __init__(
-        self,
-        file_path: str,
-        atomic_numbers: list[int],
-        cache_dir: str = None,
-        split: str = None,
-        cutoff: float = 5.0,
-        valid_frac: float = 0.1,
-        seed: int = 42,
-        backend: str = "jax",
-    ):
-        self.atomic_indices = atomic_numbers_to_indices(atomic_numbers)
-        file_path = Path(file_path)
-        cache_dir = Path(cache_dir) if cache_dir is not None else file_path.parent
-        cache_dir = cache_dir / f"{file_path.stem}_cutoff_{cutoff}"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-
-        self.hdf5_files = sorted(cache_dir.glob("chunk_*.h5"))
-
-        if not self.hdf5_files:
-            self._create_cache(file_path, cache_dir, cutoff)
-            self.hdf5_files = sorted(cache_dir.glob("chunk_*.h5"))
-
-        self._file_handles = None
-
-        self.index_map = []
-        for file_idx, file_handle in enumerate(self.file_handles):
-            n_graphs = file_handle.attrs["n_graphs"]
-            for local_idx in range(n_graphs):
-                self.index_map.append((file_idx, local_idx))
-
-        if split is not None:
-            rng = np.random.RandomState(seed=seed)
-            perm = rng.permutation(len(self.index_map))
-            train_idx, valid_idx = np.split(perm, [int(len(perm) * (1 - valid_frac))])
-            indices = train_idx if split == "train" else valid_idx
-            self.index_map = [self.index_map[i] for i in indices]
-
+class Dataset(ABC):
+    def __init__(self, backend: str = "jax"):
         self.backend = backend
 
-    @property
-    def file_handles(self):
-        if self._file_handles is None:
-            self._file_handles = [h5py.File(hdf5_file, "r") for hdf5_file in self.hdf5_files]
-        return self._file_handles
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        # file handles are not picklable
-        state["_file_handles"] = None
-        return state
-
-    def _create_cache(self, file_path, cache_dir, cutoff):
-        if file_path.is_dir():
-            file_paths = sorted(file_path.rglob("*.extxyz"))
-            n_workers = 16
-            chunk_size = len(file_paths) // n_workers + 1
-            tasks = []
-            for worker_id in range(n_workers):
-                start = worker_id * chunk_size
-                end = min(start + chunk_size, len(file_paths))
-                if start < len(file_paths):
-                    worker_files = file_paths[start:end]
-                    output_path = cache_dir / f"chunk_{worker_id:04d}.h5"
-                    tasks.append(
-                        (
-                            worker_id,
-                            worker_files,
-                            output_path,
-                            self.atomic_indices,
-                            cutoff,
-                        )
-                    )
-
-            with multiprocessing.Pool(n_workers) as p:
-                list(tqdm(p.imap(process_worker_files, tasks), total=len(tasks)))
-
-        else:
-            data = ase.io.read(file_path, index=":", format="extxyz")
-            graphs = [
-                preprocess_graph(atoms, self.atomic_indices, cutoff, True) for atoms in tqdm(data)
-            ]
-            save_graphs_to_hdf5(graphs, cache_dir / "chunk_0000.h5")
-
-    def __len__(self) -> int:
-        return len(self.index_map)
+    @abstractmethod
+    def __len__(self) -> int: ...
+    @abstractmethod
+    def _get_graph_dict(self, idx: int) -> dict: ...
 
     def __getitem__(self, idx: int):
-        file_idx, local_idx = self.index_map[idx]
-        grp = self.file_handles[file_idx][f"graph_{local_idx}"]
-        graph_dict = {}
-        for key in grp:
-            graph_dict[key] = grp[key][:]
+        graph = self._get_graph_dict(idx)
         if self.backend == "jax":
-            return dict_to_graphstuple(graph_dict)
-        elif self.backend == "torch":
-            return dict_to_pytorch_geometric(graph_dict)
+            return dict_to_graphstuple(graph)
+        if self.backend == "torch":
+            return dict_to_pytorch_geometric(graph)
+        return graph  # "dict"
 
-    def __del__(self):
-        if hasattr(self, "_file_handles"):
-            for fh in self._file_handles:
-                fh.close()
+    def split(self, valid_frac: float, seed: int = 42):
+        n = len(self)
+        perm = np.random.RandomState(seed).permutation(n)
+        n_tr = int(round(n * (1 - valid_frac)))
+        return IndexDataset(self, perm[:n_tr]), IndexDataset(self, perm[n_tr:])
+
+
+class IndexDataset(Dataset):
+    def __init__(self, base: Dataset, indices: np.ndarray):
+        super().__init__(backend=base.backend)
+        self.base, self.indices = base, np.asarray(indices, dtype=int)
+
+    def __len__(self):
+        return self.indices.size
+
+    def _get_graph_dict(self, i: int):
+        return self.base._get_graph_dict(int(self.indices[i]))
+
+
+# aselmdb dataset for loading omat/omal/odac/salex databases from fairchem
+# based on https://github.com/facebookresearch/fairchem/blob/ccc1416/src/fairchem/core/datasets/ase_datasets.py#L382
+class AseDBDataset(Dataset):
+    def __init__(
+        self, file_path: str, atomic_numbers: list[int], cutoff: float = 5.0, backend: str = "jax"
+    ):
+        super().__init__(backend=backend)
+        self.atomic_indices = atomic_numbers_to_indices(atomic_numbers)
+        self.file_path = Path(file_path)
+        self.cutoff = cutoff
+        if self.file_path.is_dir():
+            files = sorted(self.file_path.rglob("*.aselmdb"))
+            self.dbs = [ase.db.connect(fp, readonly=True, use_lock_file=False) for fp in files]
+        else:
+            self.dbs = [ase.db.connect(file_path, readonly=True, use_lock_file=False)]
+        self.db_ids = [db.ids for db in self.dbs]
+        self.id_cumulative = np.cumsum([len(ids) for ids in self.db_ids])
+
+    def __len__(self):
+        return self.id_cumulative[-1]
+
+    def _get_graph_dict(self, idx: int):
+        db_idx = bisect.bisect(self.id_cumulative, idx)
+        if db_idx > 0:
+            idx = idx - self.id_cumulative[db_idx - 1]
+        atoms = self.dbs[db_idx]._get_row(self.db_ids[db_idx][idx]).toatoms()
+        graph = preprocess_graph(atoms, self.atomic_indices, self.cutoff, True)
+        return graph
 
 
 def _dataloader_worker(dataset, index_queue, output_queue):
@@ -439,11 +363,6 @@ def prefetch(loader, queue_size=4):
         thread.join(timeout=1.0)
 
 
-# def default_collate_fn(graphs):
-#     # NB: using batch_np is considerably faster than batch with jax
-#     return pad_graph_to_nearest_power_of_two(jraph.batch_np(graphs))
-
-
 # based on https://github.com/ACEsuit/mace/blob/d39cc6b/mace/data/utils.py#L300
 def average_atom_energies(dataset: Dataset) -> list[float]:
     """Compute the average energy of each species in the dataset."""
@@ -461,28 +380,72 @@ def average_atom_energies(dataset: Dataset) -> list[float]:
     return E0s
 
 
-def dataset_stats(dataset: Dataset, atom_energies: list[float]) -> dict:
+def dataset_stats(dataset: Dataset, atom_energies: list[float], num_workers: int = 16) -> dict:
     """Compute the statistics of the dataset."""
-    energies, forces, n_neighbors, n_nodes, n_edges = [], [], [], [], []
     atom_energies = np.array(atom_energies)
-    for graph in tqdm(dataset, total=len(dataset)):
-        graph_e0 = np.sum(atom_energies[graph.nodes["species"]])
-        energies.append((graph.globals["energy"][0] - graph_e0) / graph.n_node)
-        forces.append(graph.nodes["forces"])
-        n_neighbors.append(graph.n_edge / graph.n_node)
-        n_nodes.append(graph.n_node)
-        n_edges.append(graph.n_edge)
-    mean = np.mean(np.concatenate(energies, axis=0))
-    rms = np.sqrt(np.mean(np.concatenate(forces, axis=0) ** 2))
-    n_neighbors = np.mean(np.concatenate(n_neighbors, axis=0))
+    num_graphs = len(dataset)
+
+    sum_energy_per_atom = 0.0
+    sum_force_sq = 0.0
+    num_force_components = 0
+    sum_neighbors = 0.0
+    sum_nodes = 0
+    sum_edges = 0
+    max_nodes = 0
+    max_edges = 0
+
+    # use DataLoader so we can parallelize workers to compute stats
+    loader = DataLoader(
+        dataset,
+        max_n_nodes=1,
+        max_n_edges=1,
+        avg_n_nodes=1,
+        avg_n_edges=1,
+        batch_size=1,
+        shuffle=False,
+        num_workers=num_workers,
+        prefetch_factor=1,
+    )
+    loader._start_workers()
+    loader.idx = 0
+    iterator = loader.make_generator()
+
+    try:
+        for graph in tqdm(prefetch(iterator), total=num_graphs):
+            n_node = int(np.asarray(graph.n_node).item())
+            n_edge = int(np.asarray(graph.n_edge).item())
+
+            sum_nodes += n_node
+            sum_edges += n_edge
+            if n_node > max_nodes:
+                max_nodes = n_node
+            if n_edge > max_edges:
+                max_edges = n_edge
+
+            graph_e0 = np.sum(atom_energies[graph.nodes["species"]])
+            energy_per_atom = float((graph.globals["energy"][0] - graph_e0) / n_node)
+            sum_energy_per_atom += energy_per_atom
+            sum_force_sq += float(np.sum(graph.nodes["forces"] ** 2))
+            num_force_components += graph.nodes["forces"].size
+            sum_neighbors += n_edge / n_node
+    finally:
+        for _ in loader.workers:
+            loader.index_queue.put(None)
+        for w in loader.workers:
+            w.join(timeout=1.0)
+
+    mean = sum_energy_per_atom / num_graphs
+    rms = float(np.sqrt(sum_force_sq / num_force_components))
+    avg_n_neighbors = sum_neighbors / num_graphs
+
     stats = {
-        "shift": mean.item(),
-        "scale": rms.item(),
-        "avg_n_neighbors": n_neighbors.item(),
-        "avg_n_nodes": np.mean(n_nodes).item(),
-        "avg_n_edges": np.mean(n_edges).item(),
-        "max_n_nodes": np.max(n_nodes).item(),
-        "max_n_edges": np.max(n_edges).item(),
+        "shift": float(mean),
+        "scale": float(rms),
+        "avg_n_neighbors": float(avg_n_neighbors),
+        "avg_n_nodes": float(sum_nodes / num_graphs),
+        "avg_n_edges": float(sum_edges / num_graphs),
+        "max_n_nodes": int(max_nodes),
+        "max_n_edges": int(max_edges),
     }
     print("computed dataset statistics, add to config yml file to avoid recomputing:")
     print(yaml.dump(stats))

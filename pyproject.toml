@@ -24,6 +24,7 @@ dependencies = [
     "h5py>=3.14.0",
     "wandb-osh>=1.2.2",
     "cloudpickle>=3.1.1",
+    "ase-db-backends",
 ]
 
 [project.urls]
@@ -53,6 +54,9 @@ dev = [
 
 [tool.ruff]
 line-length = 100
+
+[tool.uv.sources]
+ase-db-backends = { git = "https://gitlab.com/ase/ase-db-backends.git" }
 
 [project.optional-dependencies]
 torch = [

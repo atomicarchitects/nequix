@@ -10,13 +10,13 @@ import torch.nn as nn
 import yaml
 from torch.distributed import destroy_process_group, init_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data.distributed import DistributedSampler
 from torch_geometric.loader import DataLoader
 from wandb_osh.hooks import TriggerWandbSyncHook
 
 import wandb
-from nequix.data import Dataset, average_atom_energies, dataset_stats
+from nequix.data import AseDBDataset, Dataset
 from nequix.torch.model import NequixTorch, get_optimizer_param_groups, save_model, scatter
+from nequix.torch.utils import StatefulDistributedSampler
 
 
 def loss(model, batch, energy_weight, force_weight, stress_weight, loss_type="huber", device="cpu"):
@@ -127,7 +127,17 @@ def evaluate(
     return total_metrics
 
 
-def save_training_state(path, model, ema_model, optimizer, scheduler, step, epoch, best_val_loss):
+def save_training_state(
+    path,
+    model,
+    ema_model,
+    optimizer,
+    scheduler,
+    global_step,
+    steps_through_epoch,
+    epoch,
+    best_val_loss,
+):
     # Extract state dict from DDP wrapper if needed
     model_state = model.module.state_dict() if hasattr(model, "module") else model.state_dict()
     ema_state = (
@@ -139,7 +149,8 @@ def save_training_state(path, model, ema_model, optimizer, scheduler, step, epoc
         "ema_model_state_dict": ema_state,
         "optimizer_state_dict": optimizer.state_dict(),
         "scheduler_state_dict": scheduler.state_dict(),
-        "step": step,
+        "global_step": global_step,
+        "steps_through_epoch": steps_through_epoch,
         "epoch": epoch,
         "best_val_loss": best_val_loss,
     }
@@ -168,7 +179,8 @@ def load_training_state(path, model, ema_model, optimizer, scheduler):
         ema_model,
         optimizer,
         scheduler,
-        state["step"],
+        state["global_step"],
+        state["steps_through_epoch"],
         state["epoch"],
         state["best_val_loss"],
     )
@@ -197,24 +209,22 @@ def train(config_path: str):
         world_size = 1
         print(f"Using device: {device}")
 
-    train_dataset = Dataset(
+    train_dataset = AseDBDataset(
         file_path=config["train_path"],
-        cache_dir=config["cache_dir"],
         atomic_numbers=config["atomic_numbers"],
-        split="train",
         cutoff=config["cutoff"],
-        valid_frac=config["valid_frac"],
         backend="torch",
     )
-    val_dataset = Dataset(
-        file_path=config["train_path"],
-        cache_dir=config["cache_dir"],
-        atomic_numbers=config["atomic_numbers"],
-        split="val",
-        cutoff=config["cutoff"],
-        valid_frac=config["valid_frac"],
-        backend="torch",
-    )
+    if "valid_frac" in config:
+        train_dataset, val_dataset = train_dataset.split(valid_frac=config["valid_frac"])
+    else:
+        assert "valid_path" in config, "valid_path must be specified if valid_frac is not provided"
+        val_dataset = AseDBDataset(
+            file_path=config["valid_path"],
+            atomic_numbers=config["atomic_numbers"],
+            cutoff=config["cutoff"],
+            backend="torch",
+        )
 
     if "atom_energies" in config:
         atom_energies = [config["atom_energies"][n] for n in config["atomic_numbers"]]
@@ -238,11 +248,21 @@ def train(config_path: str):
         # stats = dataset_stats(train_dataset, atom_energies)
 
     if is_distributed:
-        train_sampler = DistributedSampler(
-            train_dataset, num_replicas=world_size, rank=rank, shuffle=True
+        train_sampler = StatefulDistributedSampler(
+            train_dataset,
+            batch_size=config["batch_size"],
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=True,
+            seed=42,
         )
-        val_sampler = DistributedSampler(
-            val_dataset, num_replicas=world_size, rank=rank, shuffle=False
+        val_sampler = StatefulDistributedSampler(
+            val_dataset,
+            batch_size=config["batch_size"],
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=False,
+            seed=42,
         )
 
         # Note: We assume 16 cores per task
@@ -379,15 +399,23 @@ def train(config_path: str):
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     # Initialize step and checkpoint loading variables
-    step = 0
+    global_step = 0
+    checkpoint_steps_through_epoch = 0
     start_epoch = 0
     best_val_loss = float("inf")
 
-    # Load checkpoint if resuming
-    if "resume_from" in config:
-        model, ema_model, optimizer, scheduler, step, start_epoch, best_val_loss = (
-            load_training_state(config["resume_from"], model, ema_model, optimizer, scheduler)
-        )
+    # Load checkpoint if resuming and checkpoint exists
+    if "resume_from" in config and Path(config["resume_from"]).exists():
+        (
+            model,
+            ema_model,
+            optimizer,
+            scheduler,
+            global_step,
+            checkpoint_steps_through_epoch,
+            start_epoch,
+            best_val_loss,
+        ) = load_training_state(config["resume_from"], model, ema_model, optimizer, scheduler)
 
     # Only initialize wandb on rank 0
     if rank == 0:
@@ -401,8 +429,8 @@ def train(config_path: str):
         wandb.init(**wandb_init_kwargs)
 
         # Set the wandb step to the correct value if resuming
-        if "resume_from" in config and step > 0:
-            wandb.log({}, step=step)
+        if "resume_from" in config and global_step > 0:
+            wandb.log({}, step=global_step)
 
         # Log parameter count
         if hasattr(wandb, "run") and wandb.run is not None:
@@ -454,6 +482,9 @@ def train(config_path: str):
 
         return total_loss, metrics
 
+    if "resume_from" in config and checkpoint_steps_through_epoch > 0:
+        train_loader.sampler.set_start_iter(checkpoint_steps_through_epoch)
+
     for epoch in range(start_epoch, config["n_epochs"]):
         # Set epoch for distributed sampler
         if is_distributed:
@@ -461,18 +492,20 @@ def train(config_path: str):
 
         start_time = time.time()
 
-        for batch in train_loader:
+        for steps_through_epoch, batch in enumerate(
+            train_loader, start=checkpoint_steps_through_epoch
+        ):
             batch_time = time.time() - start_time
             start_time = time.time()
 
             batch = batch.to(device)
 
-            total_loss, metrics = train_step(model, ema_model, batch, step)
+            total_loss, metrics = train_step(model, ema_model, batch, global_step)
 
             train_time = time.time() - start_time
-            step += 1
+            global_step += 1
 
-            if step % config["log_every"] == 0 and rank == 0:
+            if global_step % config["log_every"] == 0 and rank == 0:
                 logs = {}
                 logs["train/loss"] = total_loss.item()
                 logs["learning_rate"] = scheduler.get_last_lr()[0]
@@ -481,10 +514,40 @@ def train(config_path: str):
                 for key, value in metrics.items():
                     logs[f"train/{key}"] = value.item()
                 logs["train/batch_size"] = batch.num_graphs if hasattr(batch, "num_graphs") else 1
-                wandb.log(logs, step=step)
-                print(f"step: {step}, logs: {logs}")
+                wandb.log(logs, step=global_step)
+                print(f"step: {global_step}, logs: {logs}")
                 wandb_sync()
+
+                save_training_state(
+                    Path(wandb.run.dir) / "state.pkl",
+                    model,
+                    ema_model,
+                    optimizer,
+                    scheduler,
+                    global_step,
+                    steps_through_epoch,
+                    epoch,
+                    best_val_loss,
+                )
+
+                if "state_path" in config:
+                    save_training_state(
+                        config["state_path"],
+                        model,
+                        ema_model,
+                        optimizer,
+                        scheduler,
+                        global_step,
+                        steps_through_epoch,
+                        epoch,
+                        best_val_loss,
+                    )
+
             start_time = time.time()
+
+        # reset sampler to start of epoch
+        train_loader.sampler.set_start_iter(0)
+        checkpoint_steps_through_epoch = 0
 
         if rank == 0:
             val_metrics = evaluate(
@@ -502,36 +565,12 @@ def train(config_path: str):
                 if hasattr(wandb, "run") and wandb.run is not None:
                     save_model(Path(wandb.run.dir) / "checkpoint.pt", model_to_save, config)
 
-            if hasattr(wandb, "run") and wandb.run is not None:
-                save_training_state(
-                    Path(wandb.run.dir) / "state.pkl",
-                    model,
-                    ema_model,
-                    optimizer,
-                    scheduler,
-                    step,
-                    epoch + 1,
-                    best_val_loss,
-                )
-
-            if "state_path" in config:
-                save_training_state(
-                    config["state_path"],
-                    model,
-                    ema_model,
-                    optimizer,
-                    scheduler,
-                    step,
-                    epoch + 1,
-                    best_val_loss,
-                )
-
             logs = {}
             for key, value in val_metrics.items():
                 logs[f"val/{key}"] = value
             logs["epoch"] = epoch
             if hasattr(wandb, "run") and wandb.run is not None:
-                wandb.log(logs, step=step)
+                wandb.log(logs, step=global_step)
             print(f"epoch: {epoch}, logs: {logs}")
             wandb_sync()
 

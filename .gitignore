@@ -1,9 +1,12 @@
+# checkpoints
+*.pkl
+
 md.traj
 logs/
 wandb/
 data/*.zip
-data/mptrj-gga-ggapu/
-data/mptrj-gga-ggapu.extxyz
+data/mptrj-gga-ggapu
+data/mptrj-aselmdb
 data/2024-09-03-mp-trj/
 data/dataset_3BPA/
 data/cache/
