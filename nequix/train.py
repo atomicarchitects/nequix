@@ -17,7 +17,7 @@ from wandb_osh.hooks import TriggerWandbSyncHook
 import wandb
 from nequix.data import (
     DataLoader,
-    Dataset,
+    AseDBDataset,
     ParallelLoader,
     average_atom_energies,
     dataset_stats,
@@ -162,24 +162,22 @@ def train(config_path: str):
     # use TMPDIR for slurm jobs if available
     config["cache_dir"] = config.get("cache_dir") or os.environ.get("TMPDIR")
 
-    train_dataset = Dataset(
+    train_dataset = AseDBDataset(
         file_path=config["train_path"],
-        cache_dir=config["cache_dir"],
         atomic_numbers=config["atomic_numbers"],
-        split="train",
         cutoff=config["cutoff"],
-        valid_frac=config["valid_frac"],
         backend="jax",
     )
-    val_dataset = Dataset(
-        file_path=config["train_path"],
-        cache_dir=config["cache_dir"],
-        atomic_numbers=config["atomic_numbers"],
-        split="val",
-        cutoff=config["cutoff"],
-        valid_frac=config["valid_frac"],
-        backend="jax",
-    )
+    if "valid_frac" in config:
+        train_dataset, val_dataset = train_dataset.split(valid_frac=config["valid_frac"])
+    else:
+        assert "valid_path" in config, "valid_path must be specified if valid_frac is not provided"
+        val_dataset = AseDBDataset(
+            file_path=config["valid_path"],
+            atomic_numbers=config["atomic_numbers"],
+            cutoff=config["cutoff"],
+            backend="jax",
+        )
 
     if "atom_energies" in config:
         atom_energies = [config["atom_energies"][n] for n in config["atomic_numbers"]]
@@ -292,7 +290,7 @@ def train(config_path: str):
     start_epoch = 0
     best_val_loss = float("inf")
 
-    if "resume_from" in config:
+    if "resume_from" in config and Path(config["resume_from"]).exists():
         model, ema_model, optim, opt_state, step, start_epoch, best_val_loss = load_training_state(
             config["resume_from"]
         )

@@ -80,8 +80,13 @@ https://figshare.com/files/43302033 into `data/` then run the following to extra
 bash data/download_mptrj.sh
 ```
 
-Then start the training run. The first time this is run it will preprocess the data into HDF5 files:
+Preprocess the data into `.aselmdb` files:
 
+```bash
+uv run scripts/preprocess_data.py data/mptrj-gga-ggapu data/mptrj-aselmdb
+```
+
+Then start the training run:
 ```bash
 nequix_train configs/nequix-mp-1.yml
 ```
