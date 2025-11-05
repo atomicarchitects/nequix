@@ -62,7 +62,7 @@ ase-db-backends = { git = "https://gitlab.com/ase/ase-db-backends.git" }
 torch = [
   "e3nn>=0.5.8",
   "openequivariance==0.4.1",
-  "torch",
+  "torch==2.7.0",
   "torch-geometric>=2.6.1",
   "setuptools",
 ]
