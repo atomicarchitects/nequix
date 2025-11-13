@@ -14,7 +14,7 @@ from torch_geometric.loader import DataLoader
 from wandb_osh.hooks import TriggerWandbSyncHook
 
 import wandb
-from nequix.data import AseDBDataset, Dataset
+from nequix.data import AseDBDataset
 from nequix.torch.model import NequixTorch, get_optimizer_param_groups, save_model, scatter
 from nequix.torch.utils import StatefulDistributedSampler
 
@@ -26,7 +26,7 @@ def loss(model, batch, energy_weight, force_weight, stress_weight, loss_type="hu
         batch.positions,
         batch.edge_attr,
         batch.edge_index,
-        batch.cell,
+        batch.cell if hasattr(batch, "cell") else None,
         batch.n_node,
         batch.n_edge,
         batch.batch,

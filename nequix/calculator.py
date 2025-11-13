@@ -6,7 +6,6 @@ import jraph
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 from ase.stress import full_3x3_to_voigt_6_stress
-from ase.geometry import complete_cell
 
 from nequix.data import (
     atomic_numbers_to_indices,
@@ -85,7 +84,6 @@ class NequixCalculator(Calculator):
 
     def calculate(self, atoms=None, properties=None, system_changes=all_changes):
         Calculator.calculate(self, atoms)
-        atoms.cell = complete_cell(atoms.cell)  # avoids singular cell
         processed_graph = preprocess_graph(atoms, self.atom_indices, self.cutoff, False)
         if self.backend == "jax":
             graph = dict_to_graphstuple(processed_graph)
