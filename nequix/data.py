@@ -7,6 +7,7 @@ from pathlib import Path
 
 import ase
 import ase.db
+from ase.geometry import complete_cell
 import jax
 import jraph
 import matscipy.neighbours
@@ -21,7 +22,10 @@ def preprocess_graph(
     cutoff: float,
     targets: bool,
 ) -> dict:
-    src, dst, shift = matscipy.neighbours.neighbour_list("ijS", atoms, cutoff)
+    cell = complete_cell(atoms.cell)  # avoids singular cell
+    src, dst, shift = matscipy.neighbours.neighbour_list(
+        "ijS", positions=atoms.positions, cell=cell, pbc=atoms.pbc, cutoff=cutoff
+    )
     graph_dict = {
         "n_node": np.array([len(atoms)]).astype(np.int32),
         "n_edge": np.array([len(src)]).astype(np.int32),

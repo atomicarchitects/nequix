@@ -651,8 +651,8 @@ class NequixTorch(torch.nn.Module):
             minus_forces = torch.autograd.grad(
                 outputs=[node_energies.sum()],
                 inputs=[positions],
-                create_graph=False,
-                materialize_grads=False,
+                create_graph=True,
+                materialize_grads=True,
             )[0]
             stress = None
         return node_energies[:, 0], -minus_forces, stress
