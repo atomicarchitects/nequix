@@ -118,7 +118,7 @@ radial_polynomial_p: 6.0
 mlp_init_scale: 4.0
 index_weights: false
 layer_norm: true
-kernel: True
+kernel: true
 
 # training specific
 optimizer: "muon"
