@@ -28,8 +28,7 @@ def preprocess(file_path, output_path, n_workers=16):
         with multiprocessing.Pool(n_workers) as p:
             p.map(save_atoms_to_ase_db, tasks)
     else:
-        atoms_list = ase.io.read(file_path, index=":")
-        save_atoms_to_ase_db((output_path / "data_0000.aselmdb", atoms_list, 0))
+        save_atoms_to_ase_db((output_path / "data_0000.aselmdb", [file_path], 0))
 
 def main():
     parser = argparse.ArgumentParser()
