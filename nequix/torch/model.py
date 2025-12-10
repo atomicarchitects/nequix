@@ -246,7 +246,7 @@ class Gate(torch.nn.Module):
         scalars_gates = scalars.slice_by_mul[scalars.dim - vectors.num_irreps :]
         self.scalars_gates_vectors_elemwise = o3.ElementwiseTensorProduct(scalars_gates, vectors)
         self.slice_scalars_extra = slice(0, scalars.dim - vectors.num_irreps)
-        self.slice_scalars_gates = slice(scalars.dim - vectors.num_irreps, irreps_out.dim)
+        self.slice_scalars_gates = slice(scalars.dim - vectors.num_irreps, scalars.dim)
         self.slice_vectors = slice(scalars.dim, self.irreps_out.dim)
 
         self.scalars_extra = Activation(scalars_extra, [act[ir.p] for _, ir in scalars_extra])
