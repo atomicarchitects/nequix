@@ -66,3 +66,6 @@ torch = [
   "torch-geometric>=2.6.1",
   "setuptools",
 ]
+pft = [
+    "phonopy>=2.43.1",
+]

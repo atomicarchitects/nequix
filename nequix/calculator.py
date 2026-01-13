@@ -25,6 +25,8 @@ class NequixCalculator(Calculator):
 
     URLS = {
         "nequix-mp-1": "https://figshare.com/files/57245573",
+        "nequix-mp-1-pft": "https://figshare.com/files/60965527",
+        "nequix-mp-1-pft-no-cotrain": "https://figshare.com/files/60965530",
         "nequix-mp-1-kernel": "https://www.dropbox.com/scl/fi/0zavqdbl4n7ep9xxm12lo/nequix-mp-1-kernel.pt?rlkey=7qx8d0pdeo0p3xa74ygkcv655&st=th8f8j12&dl=1",
         "nequix-mp-1-no-kernel": "https://www.dropbox.com/scl/fi/c62lm1b12irf2afezwsud/nequix-mp-1-no-kernel.pt?rlkey=ywpg5qy75e4pco93l1oswmlb6&st=w17qpl2k&dl=1",
     }

@@ -1,6 +1,6 @@
 <h1 align='center'>Nequix</h1>
 
-See more information in our [preprint](https://arxiv.org/abs/2508.16067).
+Source code for the [Nequix foundation model](https://arxiv.org/abs/2508.16067), and [Phonon fine-tuning (PFT)](https://arxiv.org/abs/2601.07742).
 
 ## Usage
 
@@ -96,10 +96,64 @@ config is per-device, so you should be able to run this on any number of GPUs
 (although hyperparameters like learning rate are often sensitive to global batch
 size, so keep in mind).
 
+## Phonon Fine-tuning (PFT)
+
+
+First sync extra dependencies with
+
+```bash
+uv sync --extra pft
+```
+
+### Phonon Calculations
+
+We provide pretrained model weights for the co-trained (better alignment with
+MPtrj) and non co-trained models in `models/nequix-mp-1-pft.nqx` and
+`nequix-mp-1-pft-nocotrain.nqx` respectively. See [nequix-examples](https://github.com/teddykoker/nequix-examples) for
+examples on how to use these models for phonon calculations with both finite
+displacement, and analytical Hessians.
+
+
+### Training
+
+Data for the PBE MDR phonon database was originally downloaded and preprocessed with:
+
+```bash
+bash data/download_pbe_mdr.sh
+uv run data/split_pbe_mdr.py
+uv run scripts/preprocess_data_phonopy.py data/pbe-mdr/train data/pbe-mdr/train-aselmdb
+uv run scripts/preprocess_data_phonopy.py data/pbe-mdr/val data/pbe-mdr/val-aselmdb
+```
+
+However we provide preprocessed data which can be downloaded with
+
+```bash
+bash data/download_pbe_mdr_preprocessed.sh
+```
+
+To run PFT without co-training run:
+
+```bash
+uv run nequix/pft/train.py configs/nequix-mp-1-pft-no-cotrain.yml
+```
+
+To run PFT *with* co-training run (note this requires `mptrj-aselmdb` preprocessed): 
+
+```bash
+uv run nequix/pft/train.py configs/nequix-mp-1-pft.yml
+```
+
 
 ## Citation
 
 ```bibtex
+@article{koker2026pft,
+  title={{PFT}: Phonon Fine-tuning for Machine Learned Interatomic Potentials},
+  author={Koker, Teddy and Gangan, Abhijeet and Kotak, Mit and Marian, Jaime and Smidt, Tess},
+  journal={arXiv preprint arXiv:2601.07742},
+  year={2026}
+}
+
 @article{koker2025training,
   title={Training a foundation model for materials on a budget},
   author={Koker, Teddy and Kotak, Mit and Smidt, Tess},

@@ -157,6 +157,22 @@ class IndexDataset(Dataset):
         return self.base._get_graph_dict(int(self.indices[i]))
 
 
+class ConcatDataset(Dataset):
+    def __init__(self, datasets: list[Dataset]):
+        super().__init__(backend=datasets[0].backend)
+        self.datasets = datasets
+        self.len_cumulative = np.cumsum([len(ds) for ds in datasets])
+
+    def __len__(self):
+        return self.len_cumulative[-1]
+
+    def _get_graph_dict(self, idx: int):
+        ds_idx = bisect.bisect(self.len_cumulative, idx)
+        if ds_idx > 0:
+            idx = idx - self.len_cumulative[ds_idx - 1]
+        return self.datasets[ds_idx]._get_graph_dict(idx)
+
+
 # aselmdb dataset for loading omat/omal/odac/salex databases from fairchem
 # based on https://github.com/facebookresearch/fairchem/blob/ccc1416/src/fairchem/core/datasets/ase_datasets.py#L382
 class AseDBDataset(Dataset):
@@ -210,6 +226,7 @@ class DataLoader:
         avg_n_nodes: int,
         avg_n_edges: int,
         batch_size=1,
+        n_graph=None,
         seed=0,
         shuffle=False,
         buffer_factor=1.1,
@@ -226,7 +243,7 @@ class DataLoader:
         self._generator = None  # created in __iter__
         self.n_node = max(batch_size * avg_n_nodes * buffer_factor, max_n_nodes) + 1
         self.n_edge = max(batch_size * avg_n_edges * buffer_factor, max_n_edges)
-        self.n_graph = batch_size + 1
+        self.n_graph = n_graph if n_graph is not None else batch_size + 1
         self.num_workers = num_workers
         self.prefetch_factor = prefetch_factor
 

@@ -126,7 +126,9 @@ def evaluate(
     return total_metrics
 
 
-def save_training_state(path, model, ema_model, optim, opt_state, step, epoch, best_val_loss):
+def save_training_state(
+    path, model, ema_model, optim, opt_state, step, epoch, best_val_loss, wandb_run_id=None
+):
     state = {
         "model": model,
         "ema_model": ema_model,
@@ -135,6 +137,7 @@ def save_training_state(path, model, ema_model, optim, opt_state, step, epoch, b
         "step": step,
         "epoch": epoch,
         "best_val_loss": best_val_loss,
+        "wandb_run_id": wandb_run_id,
     }
     with open(path, "wb") as f:
         cloudpickle.dump(state, f)
@@ -151,6 +154,7 @@ def load_training_state(path):
         state["step"],
         state["epoch"],
         state["best_val_loss"],
+        state.get("wandb_run_id"),
     )
 
 
@@ -224,7 +228,6 @@ def train(config_path: str):
     wandb_sync = (
         TriggerWandbSyncHook() if os.environ.get("WANDB_MODE") == "offline" else lambda: None
     )
-    wandb.init(project="nequix", config=config)
 
     key = jax.random.key(0)
     model = Nequix(
@@ -246,9 +249,6 @@ def train(config_path: str):
         avg_n_neighbors=stats["avg_n_neighbors"],
         atom_energies=atom_energies,
     )
-
-    param_count = sum(p.size for p in jax.tree.flatten(eqx.filter(model, eqx.is_array))[0])
-    wandb.run.summary["param_count"] = param_count
 
     # NB: this is not exact because of dynamic batching but should be close enough
     steps_per_epoch = len(train_dataset) // (config["batch_size"] * jax.device_count())
@@ -289,11 +289,30 @@ def train(config_path: str):
     step = jnp.array(0)
     start_epoch = 0
     best_val_loss = float("inf")
+    wandb_run_id = None
 
     if "resume_from" in config and Path(config["resume_from"]).exists():
-        model, ema_model, optim, opt_state, step, start_epoch, best_val_loss = load_training_state(
-            config["resume_from"]
-        )
+        (
+            model,
+            ema_model,
+            optim,
+            opt_state,
+            step,
+            start_epoch,
+            best_val_loss,
+            wandb_run_id,
+        ) = load_training_state(config["resume_from"])
+
+    wandb_init_kwargs = {"project": "nequix", "config": config}
+    if wandb_run_id:
+        wandb_init_kwargs.update({"id": wandb_run_id, "resume": "allow"})
+    wandb.init(**wandb_init_kwargs)
+    if hasattr(wandb, "run") and wandb.run is not None:
+        wandb_run_id = getattr(wandb.run, "id", None)
+
+    param_count = sum(p.size for p in jax.tree.flatten(eqx.filter(model, eqx.is_array))[0])
+    wandb.run.summary["param_count"] = param_count
+
 
     # @eqx.filter_jit
     @functools.partial(eqx.filter_pmap, in_axes=(0, 0, None, 0, 0), axis_name="device")
@@ -379,6 +398,7 @@ def train(config_path: str):
             step,
             epoch + 1,
             best_val_loss,
+            wandb_run_id=wandb_run_id,
         )
 
         if "state_path" in config:
@@ -391,6 +411,7 @@ def train(config_path: str):
                 step,
                 epoch + 1,
                 best_val_loss,
+                wandb_run_id=wandb_run_id,
             )
 
         logs = {}
