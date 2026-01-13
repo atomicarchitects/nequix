@@ -137,6 +137,7 @@ def save_training_state(
     steps_through_epoch,
     epoch,
     best_val_loss,
+    wandb_run_id=None,
 ):
     # Extract state dict from DDP wrapper if needed
     model_state = model.module.state_dict() if hasattr(model, "module") else model.state_dict()
@@ -153,6 +154,7 @@ def save_training_state(
         "steps_through_epoch": steps_through_epoch,
         "epoch": epoch,
         "best_val_loss": best_val_loss,
+        "wandb_run_id": wandb_run_id,
     }
     torch.save(state, path)
 
@@ -183,6 +185,7 @@ def load_training_state(path, model, ema_model, optimizer, scheduler):
         state["steps_through_epoch"],
         state["epoch"],
         state["best_val_loss"],
+        state.get("wandb_run_id"),
     )
 
 
@@ -403,6 +406,8 @@ def train(config_path: str):
     checkpoint_steps_through_epoch = 0
     start_epoch = 0
     best_val_loss = float("inf")
+    wandb_run_id = None
+    wandb_sync = lambda: None  # noqa: E731
 
     # Load checkpoint if resuming and checkpoint exists
     if "resume_from" in config and Path(config["resume_from"]).exists():
@@ -415,6 +420,7 @@ def train(config_path: str):
             checkpoint_steps_through_epoch,
             start_epoch,
             best_val_loss,
+            wandb_run_id,
         ) = load_training_state(config["resume_from"], model, ema_model, optimizer, scheduler)
 
     # Only initialize wandb on rank 0
@@ -423,20 +429,15 @@ def train(config_path: str):
             TriggerWandbSyncHook() if os.environ.get("WANDB_MODE") == "offline" else lambda: None
         )
 
-        # Initialize wandb with the correct step count
         wandb_init_kwargs = {"project": "nequix", "config": config}
+        if wandb_run_id:
+            wandb_init_kwargs.update({"id": wandb_run_id, "resume": "allow"})
 
         wandb.init(**wandb_init_kwargs)
 
-        # Set the wandb step to the correct value if resuming
-        if "resume_from" in config and global_step > 0:
-            wandb.log({}, step=global_step)
-
-        # Log parameter count
         if hasattr(wandb, "run") and wandb.run is not None:
             wandb.run.summary["param_count"] = param_count
-    else:
-        wandb_sync = lambda: None  # noqa: E731
+            wandb_run_id = getattr(wandb.run, "id", None)
 
     def train_step(model, ema_model, batch, step):
         model.train()
@@ -528,6 +529,7 @@ def train(config_path: str):
                     steps_through_epoch,
                     epoch,
                     best_val_loss,
+                    wandb_run_id=wandb_run_id,
                 )
 
                 if "state_path" in config:
@@ -541,6 +543,7 @@ def train(config_path: str):
                         steps_through_epoch,
                         epoch,
                         best_val_loss,
+                        wandb_run_id=wandb_run_id,
                     )
 
             start_time = time.time()
