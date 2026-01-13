@@ -24,9 +24,13 @@ class NequixCalculator(Calculator):
     implemented_properties = ["energy", "free_energy", "forces", "stress"]
 
     URLS = {
-        "nequix-mp-1": "https://figshare.com/files/57245573",
-        "nequix-mp-1-pft": "https://figshare.com/files/60965527",
-        "nequix-mp-1-pft-no-cotrain": "https://figshare.com/files/60965530",
+        # NOTE: not using figshare urls because they like to give 403 errors
+        # "nequix-mp-1": "https://figshare.com/files/57245573",
+        # "nequix-mp-1-pft": "https://figshare.com/files/60965527",
+        # "nequix-mp-1-pft-no-cotrain": "https://figshare.com/files/60965530",
+        "nequix-mp-1": "https://github.com/atomicarchitects/nequix/raw/7c2854de8e754b1a60274c7d9d2e014989ed632e/models/nequix-mp-1.nqx",
+        "nequix-mp-1-pft": "https://github.com/atomicarchitects/nequix/raw/7c2854de8e754b1a60274c7d9d2e014989ed632e/models/nequix-mp-1-pft.nqx",
+        "nequix-mp-1-pft-no-cotrain": "https://github.com/atomicarchitects/nequix/raw/7c2854de8e754b1a60274c7d9d2e014989ed632e/models/nequix-mp-1-pft-no-cotrain.nqx",
         "nequix-mp-1-kernel": "https://www.dropbox.com/scl/fi/0zavqdbl4n7ep9xxm12lo/nequix-mp-1-kernel.pt?rlkey=7qx8d0pdeo0p3xa74ygkcv655&st=th8f8j12&dl=1",
         "nequix-mp-1-no-kernel": "https://www.dropbox.com/scl/fi/c62lm1b12irf2afezwsud/nequix-mp-1-no-kernel.pt?rlkey=ywpg5qy75e4pco93l1oswmlb6&st=w17qpl2k&dl=1",
     }
