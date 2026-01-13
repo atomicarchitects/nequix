@@ -1,6 +1,6 @@
 [project]
 name = "nequix"
-version = "0.3.4"
+version = "0.3.5"
 description = "Nequix source code"
 readme = "README.md"
 authors = [
