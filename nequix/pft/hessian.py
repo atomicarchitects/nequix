@@ -28,5 +28,4 @@ def hessian_linearized(model, graph, batch_size = None):
         jax.lax.map(hvp, basis, batch_size=batch_size)
         .reshape(pos.shape + pos.shape)  # (n, 3, n, 3)
         .swapaxes(1, 2)  # (n, n, 3, 3)
-        .reshape(3 * pos.shape[0], 3 * pos.shape[0])  # (3n, 3n)
     )
