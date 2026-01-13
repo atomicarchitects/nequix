@@ -1,0 +1,40 @@
+state_path: "checkpoints/nequix-mp-1-pft-nocotrain.pkl"
+resume_from: "checkpoints/nequix-mp-1-pft-nocotrain.pkl"
+finetune_from: "models/nequix-mp-1.nqx"
+
+# dataset specific
+train_path: "data/pbe-mdr/train-aselmdb"
+val_path: "data/pbe-mdr/val-aselmdb"
+
+# unused
+extra_train_path: "data/mptrj-aselmdb" # unused
+extra_val_frac: 0.05 # unused
+
+avg_n_edges: 5418.453349001175
+avg_n_nodes: 104.9225616921269
+max_n_edges: 42600
+max_n_nodes: 306
+
+
+# training specific
+extra_train_steps: 0  # number of extra mptrj training steps per phonon train step
+extra_energy_weight: 500.0 # Unused
+extra_force_weight: 200.0 # Unused
+extra_stress_weight: 50.0 # Unused
+optimizer: "adam"
+learning_rate: 0.0001
+checkpoint_grad_energy: false  # for smaller GPUs, might need to use gradient checkpointing for the energy
+# warmup_epochs: 0.1
+# warmup_factor: 0.2
+grad_clip_norm: 100.0
+weight_decay: 1.0e-3
+batch_size: 16  # approximate batch size NOTE: per device
+n_graph: 18   # maximum number of graphs in a batch (+1 for padding)
+n_epochs: 200
+energy_weight: 20.0
+force_weight: 20.0
+stress_weight: 5.0
+hessian_weight: 100.0
+val_every: 2
+log_every: 100
+ema_decay: 0.999
