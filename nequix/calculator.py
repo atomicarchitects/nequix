@@ -90,11 +90,13 @@ class NequixCalculator(Calculator):
         if self.backend == "jax":
             graph = dict_to_graphstuple(processed_graph)
             # maintain edge capacity with _capacity_multiplier over edges,
-            # recalculate if numbers (system) changes
-            if self._capacity is None or ("numbers" in system_changes):
+            # recalculate if numbers (system) changes, or if the capacity is exceeded
+            if (
+                self._capacity is None
+                or ("numbers" in system_changes)
+                or graph.n_edge[0] > self._capacity
+            ):
                 self._capacity = int(np.ceil(graph.n_edge[0] * self._capacity_multiplier))
-            elif graph.n_edge[0] > self._capacity:
-                self._capacity = int(np.ceil(self._capacity * self._capacity_multiplier))
             # Pad the graph
             graph = jraph.pad_with_graphs(
                 graph, n_node=graph.n_node[0] + 1, n_edge=self._capacity, n_graph=2
