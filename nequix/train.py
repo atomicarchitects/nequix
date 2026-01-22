@@ -313,7 +313,6 @@ def train(config_path: str):
     param_count = sum(p.size for p in jax.tree.flatten(eqx.filter(model, eqx.is_array))[0])
     wandb.run.summary["param_count"] = param_count
 
-
     # @eqx.filter_jit
     @functools.partial(eqx.filter_pmap, in_axes=(0, 0, None, 0, 0), axis_name="device")
     def train_step(model, ema_model, step, opt_state, batch):

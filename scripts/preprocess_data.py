@@ -16,6 +16,7 @@ def save_atoms_to_ase_db(args):
             for atoms in atoms_list:
                 db.write(atoms, data=atoms.info)
 
+
 def preprocess(file_path, output_path, n_workers=16):
     file_path = Path(file_path)
     output_path = Path(output_path)
@@ -30,6 +31,7 @@ def preprocess(file_path, output_path, n_workers=16):
     else:
         save_atoms_to_ase_db((output_path / "data_0000.aselmdb", [file_path], 0))
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input_path", type=str)
@@ -37,6 +39,7 @@ def main():
     parser.add_argument("--n_workers", type=int, default=16)
     args = parser.parse_args()
     preprocess(args.input_path, args.output_path, args.n_workers)
+
 
 if __name__ == "__main__":
     main()
