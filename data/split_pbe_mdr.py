@@ -126,9 +126,7 @@ def main(data_root: Path):
     n_holdout = N_TEST
     extra_holdout = True
     split_file = data_root / "pbe_mdr_split.json"
-    ids_train, ids_val, ids_test = generate_split(
-        files, n_holdout, split_file=split_file
-    )
+    ids_train, ids_val, ids_test = generate_split(files, n_holdout, split_file=split_file)
     print("n_holdout:", n_holdout)
     print("extra_holdout:", extra_holdout)
     print("ids_train:", len(ids_train))

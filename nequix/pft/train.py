@@ -5,7 +5,6 @@ from collections import defaultdict
 from functools import partial
 from pathlib import Path
 
-import cloudpickle
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -25,6 +24,7 @@ from nequix.pft.data import PhononDataset
 from nequix.train import loss as efs_loss, save_training_state, load_training_state
 
 import wandb
+
 
 def loss(
     model,
@@ -446,7 +446,9 @@ def train(config_path):
 
             if val_metrics["loss"] < best_val_loss:
                 best_val_loss = val_metrics["loss"]
-                save_model(Path(wandb.run.dir) / "checkpoint.nqx", ema_model, original_config | config)
+                save_model(
+                    Path(wandb.run.dir) / "checkpoint.nqx", ema_model, original_config | config
+                )
 
             # always save training state to wandb dir
             save_training_state(
