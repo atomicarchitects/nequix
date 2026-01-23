@@ -21,11 +21,12 @@ except ImportError:
 pytestmark = pytest.mark.skipif(not JAX_MD_AVAILABLE, reason="jax_md not installed")
 
 
-@pytest.fixture
-def si_system():
+@pytest.fixture(params=[False, True], ids=["no-kernel", "kernel"])
+def si_system(request):
     """Create Si diamond system with JAX-MD neighbor list."""
+    use_kernel = request.param
     atoms = bulk("Si", "diamond", a=5.43)
-    calc = NequixCalculator("nequix-mp-1")
+    calc = NequixCalculator("nequix-mp-1", use_kernel=use_kernel)
     atoms.calc = calc
 
     box = jnp.asarray(atoms.cell.T.astype(np.float32))
@@ -80,10 +81,11 @@ def test_jit(si_system):
     assert np.all(np.isfinite(F))
 
 
-def test_perturbed_structure():
+@pytest.mark.parametrize("use_kernel", [False, True], ids=["no-kernel", "kernel"])
+def test_perturbed_structure(use_kernel):
     """Test energy, forces, and stress on a perturbed structure."""
     atoms = bulk("Si", "diamond", a=5.43)
-    calc = NequixCalculator("nequix-mp-1")
+    calc = NequixCalculator("nequix-mp-1", use_kernel=use_kernel)
     atoms.positions[0] += [0.1, 0.05, -0.05]
     atoms.calc = calc
 
