@@ -46,6 +46,7 @@ include = ["nequix/*"]
 [dependency-groups]
 dev = [
     "ipython>=8.36.0",
+    "jax-md",
     "pandas>=2.3.1",
     "pre-commit>=4.1.0",
     "pytest>=8.3.5",
@@ -57,6 +58,7 @@ line-length = 100
 
 [tool.uv.sources]
 ase-db-backends = { git = "https://gitlab.com/ase/ase-db-backends.git" }
+jax-md = { git = "https://github.com/jax-md/jax-md.git" }
 
 [project.optional-dependencies]
 torch = [
