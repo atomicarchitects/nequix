@@ -42,7 +42,7 @@ class NequixCalculator(Calculator):
         capacity_multiplier: float = 1.1,  # Only for jax backend
         backend: str = "jax",
         use_compile: bool = True,  # Only for torch backend
-        use_kernel: bool = True,  # Only for torch backend
+        use_kernel: bool = True,  # Use OpenEquivariance kernels
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -66,7 +66,7 @@ class NequixCalculator(Calculator):
         if backend == "jax":
             from nequix.model import load_model
 
-            self.model, self.config = load_model(model_path)
+            self.model, self.config = load_model(model_path, kernel=use_kernel)
         elif backend == "torch":
             import torch
 
