@@ -1,6 +1,6 @@
 import json
 import math
-from typing import Callable, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 import e3nn_jax as e3nn
 import equinox as eqx
@@ -9,6 +9,13 @@ import jax.numpy as jnp
 import jraph
 
 from nequix.layer_norm import RMSLayerNorm
+
+try:
+    import openequivariance as oeq
+
+    OEQ_AVAILABLE = True
+except ImportError:
+    OEQ_AVAILABLE = False
 
 
 def bessel_basis(x: jax.Array, num_basis: int, r_max: float) -> jax.Array:
@@ -30,6 +37,23 @@ def polynomial_cutoff(x: jax.Array, r_max: float, p: float) -> jax.Array:
     out = out + (p * (p + 2.0) * jnp.power(x, p + 1.0))
     out = out - ((p * (p + 1.0) / 2) * jnp.power(x, p + 2.0))
     return out * jnp.where(x < 1.0, 1.0, 0.0)
+
+
+class Sort(eqx.Module):
+    irreps: e3nn.Irreps = eqx.field(static=True)
+    irreps_sorted: e3nn.Irreps = eqx.field(static=True)
+    slices_sorted: list = eqx.field(static=True)
+
+    def __init__(self, irreps: e3nn.Irreps):
+        self.irreps = irreps
+        slices = list(irreps.slices())
+        irreps_sorted, _, inv = irreps.sort()
+        self.slices_sorted = [slices[i] for i in inv]
+        self.irreps_sorted = irreps_sorted
+
+    def __call__(self, x: jax.Array) -> jax.Array:
+        chunks = [x[..., s] for s in self.slices_sorted]
+        return jnp.concatenate(chunks, axis=-1)
 
 
 class Linear(eqx.Module):
@@ -96,14 +120,18 @@ class MLP(eqx.Module):
 
 class NequixConvolution(eqx.Module):
     output_irreps: e3nn.Irreps = eqx.field(static=True)
+    tp_irreps: e3nn.Irreps = eqx.field(static=True)
     index_weights: bool = eqx.field(static=True)
     avg_n_neighbors: float = eqx.field(static=True)
+    kernel: bool = eqx.field(static=True)
 
     radial_mlp: MLP
     linear_1: e3nn.equinox.Linear
     linear_2: e3nn.equinox.Linear
     skip: e3nn.equinox.Linear
     layer_norm: Optional[RMSLayerNorm]
+    sort: Sort
+    tp_conv: Optional[Any] = None
 
     def __init__(
         self,
@@ -119,12 +147,48 @@ class NequixConvolution(eqx.Module):
         avg_n_neighbors: float,
         index_weights: bool = True,
         layer_norm: bool = False,
+        kernel: bool = False,
     ):
         self.output_irreps = output_irreps
         self.avg_n_neighbors = avg_n_neighbors
         self.index_weights = index_weights
+        self.kernel = kernel
 
-        tp_irreps = e3nn.tensor_product(input_irreps, sh_irreps, filter_ir_out=output_irreps)
+        irreps_out_tp = []
+        instructions = []
+        for i, (mul, ir_in1) in enumerate(input_irreps):
+            for j, (_, ir_in2) in enumerate(sh_irreps):
+                for ir_out in ir_in1 * ir_in2:
+                    if ir_out in output_irreps or ir_out == e3nn.Irrep("0e"):
+                        k = len(irreps_out_tp)
+                        irreps_out_tp.append((mul, ir_out))
+                        instructions.append((i, j, k, "uvu", True))
+
+        tp_irreps = e3nn.Irreps(irreps_out_tp)
+        _, _, inv = tp_irreps.sort()
+        instructions = [instructions[i] for i in inv]
+        self.tp_irreps = tp_irreps
+
+        if kernel:
+            if not OEQ_AVAILABLE:
+                raise ImportError(
+                    "OpenEquivariance is required for kernel=True. "
+                    "Install with: uv pip install 'openequivariance[jax]'"
+                )
+            problem = oeq.TPProblem(
+                str(input_irreps),
+                str(sh_irreps),
+                str(tp_irreps),
+                instructions=instructions,
+                shared_weights=False,
+                internal_weights=False,
+            )
+            self.tp_conv = oeq.jax.TensorProductConv(problem, deterministic=False)
+        else:
+            self.tp_conv = None
+
+        self.sort = Sort(tp_irreps)
+        tp_irreps = self.sort.irreps_sorted
 
         k1, k2, k3, k4 = jax.random.split(key, 4)
 
@@ -182,14 +246,27 @@ class NequixConvolution(eqx.Module):
         senders: jax.Array,
         receivers: jax.Array,
     ) -> e3nn.IrrepsArray:
-        messages = self.linear_1(features)[senders]
-        messages = e3nn.tensor_product(messages, sh, filter_ir_out=self.output_irreps)
+        messages = self.linear_1(features)
         radial_message = jax.vmap(self.radial_mlp)(radial_basis)
-        messages = messages * radial_message
 
-        messages_agg = e3nn.scatter_sum(
-            messages, dst=receivers, output_size=features.shape[0]
-        ) / jnp.sqrt(jax.lax.stop_gradient(self.avg_n_neighbors))
+        if self.kernel:
+            messages_agg = self.sort(
+                self.tp_conv.forward(
+                    messages.array,
+                    sh.array,
+                    radial_message,
+                    receivers.astype(jnp.int32),
+                    senders.astype(jnp.int32),
+                )
+            )
+            messages_agg = e3nn.IrrepsArray(self.sort.irreps_sorted, messages_agg)
+        else:
+            messages = messages[senders]
+            messages = e3nn.tensor_product(messages, sh, filter_ir_out=self.tp_irreps)
+            messages = messages * radial_message
+            messages_agg = e3nn.scatter_sum(messages, dst=receivers, output_size=features.shape[0])
+
+        messages_agg = messages_agg / jnp.sqrt(jax.lax.stop_gradient(self.avg_n_neighbors))
 
         skip = self.skip(species, features) if self.index_weights else self.skip(features)
         features = self.linear_2(messages_agg) + skip
@@ -237,6 +314,7 @@ class Nequix(eqx.Module):
         avg_n_neighbors: float = 1.0,
         atom_energies: Optional[Sequence[float]] = None,
         layer_norm: bool = False,
+        kernel: bool = False,
     ):
         self.lmax = lmax
         self.cutoff = cutoff
@@ -271,6 +349,7 @@ class Nequix(eqx.Module):
                     avg_n_neighbors=avg_n_neighbors,
                     index_weights=index_weights,
                     layer_norm=layer_norm,
+                    kernel=kernel,
                 )
             )
 
@@ -446,7 +525,7 @@ def save_model(path: str, model: eqx.Module, config: dict):
         eqx.tree_serialise_leaves(f, model)
 
 
-def load_model(path: str) -> tuple[Nequix, dict]:
+def load_model(path: str, kernel: bool = False) -> tuple[Nequix, dict]:
     """Load a model and its config from a file."""
     with open(path, "rb") as f:
         config = json.loads(f.readline().decode())
@@ -467,6 +546,7 @@ def load_model(path: str) -> tuple[Nequix, dict]:
             shift=config["shift"],
             scale=config["scale"],
             avg_n_neighbors=config["avg_n_neighbors"],
+            kernel=kernel,  # Backwards compatibility?
             # NOTE: atom_energies will be in model weights
         )
         model = eqx.tree_deserialise_leaves(f, model)
