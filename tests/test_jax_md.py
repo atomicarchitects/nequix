@@ -50,19 +50,19 @@ def test_energy_forces_stress(si_system):
     # Energy
     E_ase = atoms.get_potential_energy()
     E_jax = float(energy_fn(positions, nbrs))
-    np.testing.assert_allclose(E_jax, E_ase, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(E_jax, E_ase, atol=1e-8, rtol=1e-5)
 
     # Forces
     F_ase = atoms.get_forces()
     F_jax = quantity.force(energy_fn)(positions, nbrs)
-    np.testing.assert_allclose(F_jax, F_ase, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(F_jax, F_ase, atol=1e-5, rtol=1e-5)
 
     # Stress - Note: sign convention w.r.t ASE
     stress_ase = atoms.get_stress(voigt=False)
     stress_jax = -quantity.stress(energy_fn, positions, box, neighbor=nbrs)
     assert stress_jax.shape == (3, 3)
     np.testing.assert_allclose(stress_jax, stress_jax.T, atol=1e-5)
-    np.testing.assert_allclose(stress_jax, stress_ase, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(stress_jax, stress_ase, atol=1e-5, rtol=1e-5)
 
 
 def test_jit(si_system):
@@ -102,12 +102,12 @@ def test_perturbed_structure():
     # Energy
     E_ase = atoms.get_potential_energy()
     E_jax = float(energy_fn(positions, nbrs))
-    np.testing.assert_allclose(E_jax, E_ase, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(E_jax, E_ase, atol=1e-8, rtol=1e-8)
 
     # Forces
     F_ase = atoms.get_forces()
     F_jax = quantity.force(energy_fn)(positions, nbrs)
-    np.testing.assert_allclose(F_jax, F_ase, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(F_jax, F_ase, atol=1e-5, rtol=1e-5)
     assert np.max(np.abs(F_jax)) > 0.1  # Non-zero forces for perturbed structure
 
     # Stress - Note: sign convention w.r.t ASE
@@ -115,4 +115,4 @@ def test_perturbed_structure():
     stress_jax = -quantity.stress(energy_fn, positions, box, neighbor=nbrs)
     assert stress_jax.shape == (3, 3)
     np.testing.assert_allclose(stress_jax, stress_jax.T, atol=1e-5)
-    np.testing.assert_allclose(stress_jax, stress_ase, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(stress_jax, stress_ase, atol=1e-5, rtol=1e-5)
