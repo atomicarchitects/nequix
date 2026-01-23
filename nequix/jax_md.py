@@ -1,4 +1,4 @@
-"""Nequix integration with JAX-MD."""
+# Nequix integration with JAX MD
 
 from typing import Any, Callable, Tuple
 import jax.numpy as jnp
@@ -47,7 +47,6 @@ def nequix_neighbor_list(
     """
     r_cutoff = model.cutoff
 
-    # Create neighbor list
     neighbor_fn = neighbor_list_fn(
         displacement_fn,
         box,
@@ -57,7 +56,6 @@ def nequix_neighbor_list(
         **neighbor_kwargs,
     )
 
-    # Create featurizer
     if featurizer_fn is custom_partition.graph_featurizer:
         displacement_fn, _ = space.free()
         featurizer = featurizer_fn(displacement_fn)
@@ -79,17 +77,8 @@ def nequix_neighbor_list(
           For forces, use ``-jax.grad(energy_fn)(position, neighbor)``.
           For stress, use ``quantity.stress(energy_fn, position, box, neighbor=neighbor)``.
         """
-        # Create graph using featurizer
         graph = featurizer(species, position, neighbor, **kwargs)
-
-        # Extract graph components for nequix
-        dR = graph.edges  # Displacement vectors
-        senders = graph.senders
-        receivers = graph.receivers
-
-        # Call nequix model's node_energies method
-        node_energies = model.node_energies(dR, species, senders, receivers)
-
+        node_energies = model.node_energies(graph.edges, species, graph.senders, graph.receivers)
         return jnp.sum(node_energies)
 
     return neighbor_fn, energy_fn
