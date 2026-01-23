@@ -59,6 +59,7 @@ line-length = 100
 [tool.uv.sources]
 ase-db-backends = { git = "https://gitlab.com/ase/ase-db-backends.git" }
 jax-md = { git = "https://github.com/jax-md/jax-md.git" }
+openequivariance = { git = "https://github.com/PASSIONLab/OpenEquivariance.git", subdirectory = "openequivariance" }
 
 [project.optional-dependencies]
 torch = [
@@ -67,6 +68,11 @@ torch = [
   "torch==2.7.0",
   "torch-geometric>=2.6.1",
   "setuptools",
+]
+oeq = [
+  # You need to install openequivariance_extjax separately
+  # uv pip install "git+https://github.com/PASSIONLab/OpenEquivariance.git#subdirectory=openequivariance_extjax" --no-build-isolation
+  "openequivariance[jax]",
 ]
 pft = [
     "phonopy>=2.43.1",
