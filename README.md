@@ -39,13 +39,13 @@ bash data/download_pbe_mdr_preprocessed.sh
 To run PFT without co-training run:
 
 ```bash
-uv run nequix/pft/train.py configs/nequix-mp-1-pft-no-cotrain.yml
+uv run pft/train.py configs/nequix-mp-1-pft-no-cotrain.yml
 ```
 
 To run PFT *with* co-training run (note this requires `mptrj-aselmdb` preprocessed): 
 
 ```bash
-uv run nequix/pft/train.py configs/nequix-mp-1-pft.yml
+uv run pft/train.py configs/nequix-mp-1-pft.yml
 ```
 
 
