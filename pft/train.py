@@ -20,7 +20,7 @@ from nequix.data import (
 )
 from nequix.model import load_model, node_graph_idx, save_model, weight_decay_mask
 from nequix.train import evaluate as efs_evaluate
-from nequix.pft.data import PhononDataset
+from pft.data import PhononDataset
 from nequix.train import loss as efs_loss, save_training_state, load_training_state
 
 import wandb

@@ -1,7 +1,7 @@
 [project]
-name = "nequix"
-version = "0.3.5"
-description = "Nequix source code"
+name = "pft"
+version = "0.1.0"
+description = "PFT source code"
 readme = "README.md"
 authors = [
     { name = "Teddy Koker", email = "teddy.koker@gmail.com" }
@@ -25,15 +25,8 @@ dependencies = [
     "wandb-osh>=1.2.2",
     "cloudpickle>=3.1.1",
     "ase-db-backends",
+    "nequix",
 ]
-
-[project.urls]
-Homepage = "https://pypi.org/project/nequix/"
-Repository = "https://github.com/atomicarchitects/nequix"
-
-
-[project.scripts]
-nequix_train = "nequix.train:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -41,7 +34,7 @@ build-backend = "hatchling.build"
 
 
 [tool.hatch.build]
-include = ["nequix/*"]
+include = ["pft/*"]
 
 [dependency-groups]
 dev = [
@@ -51,6 +44,7 @@ dev = [
     "pre-commit>=4.1.0",
     "pytest>=8.3.5",
     "pytest-benchmark>=5.1.0",
+    "phonopy>=2.43.1",
 ]
 
 [tool.ruff]
@@ -59,15 +53,3 @@ line-length = 100
 [tool.uv.sources]
 ase-db-backends = { git = "https://gitlab.com/ase/ase-db-backends.git" }
 jax-md = { git = "https://github.com/jax-md/jax-md.git" }
-
-[project.optional-dependencies]
-torch = [
-  "e3nn>=0.5.8",
-  "openequivariance==0.4.1",
-  "torch==2.7.0",
-  "torch-geometric>=2.6.1",
-  "setuptools",
-]
-pft = [
-    "phonopy>=2.43.1",
-]
