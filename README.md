@@ -4,10 +4,10 @@ Source code for [Phonon fine-tuning (PFT)](https://arxiv.org/abs/2601.07742).
 
 ## Usage
 
-First sync extra dependencies with
+First sync dependencies with
 
 ```bash
-uv sync --extra pft
+uv sync
 ```
 
 ### Phonon Calculations
@@ -49,13 +49,3 @@ uv run nequix/pft/train.py configs/nequix-mp-1-pft.yml
 ```
 
 
-## Citation
-
-```bibtex
-@article{koker2026pft,
-  title={{PFT}: Phonon Fine-tuning for Machine Learned Interatomic Potentials},
-  author={Koker, Teddy and Gangan, Abhijeet and Kotak, Mit and Marian, Jaime and Smidt, Tess},
-  journal={arXiv preprint arXiv:2601.07742},
-  year={2026}
-}
-```
