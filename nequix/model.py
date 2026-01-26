@@ -12,6 +12,7 @@ from nequix.layer_norm import RMSLayerNorm
 
 try:
     import openequivariance as oeq
+    import openequivariance_extjax  # noqa: F401
 
     OEQ_AVAILABLE = True
 except ImportError:
@@ -172,8 +173,10 @@ class NequixConvolution(eqx.Module):
         if kernel:
             if not OEQ_AVAILABLE:
                 raise ImportError(
-                    "OpenEquivariance is required for kernel=True. "
-                    "Install with: uv pip install 'openequivariance[jax]'"
+                    "OpenEquivariance with JAX support is required for kernel=True. "
+                    "Install both packages:\n"
+                    "  uv pip install 'openequivariance[jax]'\n"
+                    "  uv pip install 'openequivariance_extjax' --no-build-isolation"
                 )
             problem = oeq.TPProblem(
                 str(input_irreps),

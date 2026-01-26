@@ -8,10 +8,12 @@ from ase.build import bulk
 
 from nequix.calculator import NequixCalculator
 from nequix.data import atomic_numbers_to_indices
+from nequix.model import OEQ_AVAILABLE
 
 try:
     from jax_md import quantity, space
     from jax_md.custom_partition import estimate_max_neighbors_from_box
+
     from nequix.jax_md import nequix_neighbor_list
 
     JAX_MD_AVAILABLE = True
@@ -19,9 +21,15 @@ except ImportError:
     JAX_MD_AVAILABLE = False
 
 pytestmark = pytest.mark.skipif(not JAX_MD_AVAILABLE, reason="jax_md not installed")
+skip_no_oeq = pytest.mark.skipif(not OEQ_AVAILABLE, reason="OpenEquivariance not installed")
 
 
-@pytest.fixture(params=[False, True], ids=["no-kernel", "kernel"])
+@pytest.fixture(
+    params=[
+        pytest.param(False, id="no-kernel"),
+        pytest.param(True, id="kernel", marks=skip_no_oeq),
+    ]
+)
 def si_system(request):
     """Create Si diamond system with JAX-MD neighbor list."""
     use_kernel = request.param
@@ -81,7 +89,13 @@ def test_jit(si_system):
     assert np.all(np.isfinite(F))
 
 
-@pytest.mark.parametrize("use_kernel", [False, True], ids=["no-kernel", "kernel"])
+@pytest.mark.parametrize(
+    "use_kernel",
+    [
+        pytest.param(False, id="no-kernel"),
+        pytest.param(True, id="kernel", marks=skip_no_oeq),
+    ],
+)
 def test_perturbed_structure(use_kernel):
     """Test energy, forces, and stress on a perturbed structure."""
     atoms = bulk("Si", "diamond", a=5.43)
