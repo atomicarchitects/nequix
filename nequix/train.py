@@ -16,14 +16,15 @@ from wandb_osh.hooks import TriggerWandbSyncHook
 
 import wandb
 from nequix.data import (
-    DataLoader,
     AseDBDataset,
+    ConcatDataset,
+    DataLoader,
     ParallelLoader,
     average_atom_energies,
     dataset_stats,
     prefetch,
 )
-from nequix.model import Nequix, save_model, weight_decay_mask
+from nequix.model import Nequix, load_model, save_model, weight_decay_mask
 
 
 @eqx.filter_jit
@@ -166,12 +167,25 @@ def train(config_path: str):
     # use TMPDIR for slurm jobs if available
     config["cache_dir"] = config.get("cache_dir") or os.environ.get("TMPDIR")
 
-    train_dataset = AseDBDataset(
-        file_path=config["train_path"],
-        atomic_numbers=config["atomic_numbers"],
-        cutoff=config["cutoff"],
-        backend="jax",
-    )
+    if isinstance(config["train_path"], list):
+        train_dataset = ConcatDataset(
+            [
+                AseDBDataset(
+                    file_path=path,
+                    atomic_numbers=config["atomic_numbers"],
+                    cutoff=config["cutoff"],
+                    backend="jax",
+                )
+                for path in config["train_path"]
+            ]
+        )
+    else:
+        train_dataset = AseDBDataset(
+            file_path=config["train_path"],
+            atomic_numbers=config["atomic_numbers"],
+            cutoff=config["cutoff"],
+            backend="jax",
+        )
     if "valid_frac" in config:
         train_dataset, val_dataset = train_dataset.split(valid_frac=config["valid_frac"])
     else:
@@ -249,6 +263,13 @@ def train(config_path: str):
         avg_n_neighbors=stats["avg_n_neighbors"],
         atom_energies=atom_energies,
     )
+    if "finetune_from" in config and Path(config["finetune_from"]).exists():
+        if "atom_energies" in config:
+            # TODO
+            raise NotImplementedError("Updating atom energies not implemented for JAX backend")
+        model, _ = load_model(config["finetune_from"])
+
+    param_count = sum(p.size for p in jax.tree.flatten(eqx.filter(model, eqx.is_array))[0])
 
     # NB: this is not exact because of dynamic batching but should be close enough
     steps_per_epoch = len(train_dataset) // (config["batch_size"] * jax.device_count())
@@ -301,17 +322,15 @@ def train(config_path: str):
             start_epoch,
             best_val_loss,
             wandb_run_id,
-        ) = load_training_state(config["resume_from"])
+        ) = load_training_state(config["resume_from"]) 
 
     wandb_init_kwargs = {"project": "nequix", "config": config}
     if wandb_run_id:
         wandb_init_kwargs.update({"id": wandb_run_id, "resume": "allow"})
     wandb.init(**wandb_init_kwargs)
     if hasattr(wandb, "run") and wandb.run is not None:
+        wandb.run.summary["param_count"] = param_count
         wandb_run_id = getattr(wandb.run, "id", None)
-
-    param_count = sum(p.size for p in jax.tree.flatten(eqx.filter(model, eqx.is_array))[0])
-    wandb.run.summary["param_count"] = param_count
 
     # @eqx.filter_jit
     @functools.partial(eqx.filter_pmap, in_axes=(0, 0, None, 0, 0), axis_name="device")
@@ -326,6 +345,7 @@ def train(config_path: str):
             config["loss_type"],
         )
         grads = jax.lax.pmean(grads, axis_name="device")
+        metrics["grad_norm"] = optax.global_norm(grads)
         updates, opt_state = optim.update(grads, opt_state, eqx.filter(model, eqx.is_array))
         model = eqx.apply_updates(model, updates)
 

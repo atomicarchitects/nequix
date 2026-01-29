@@ -1,0 +1,155 @@
+resume_from: "checkpoints/nequix-oam-1.pkl"
+state_path: "checkpoints/nequix-oam-1.pkl" # for saving/resuming training
+
+finetune_from: "models/nequix-omat-1.pt"
+
+# reinitialize readout layer
+readout_initialization: true
+
+cutoff: 6.0
+
+# per eSEN paper - 8 copies of MPtrj + sAlex
+train_path:
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/salex/train"
+valid_path: "data/salex/val"
+
+atomic_numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 89, 90, 91, 92, 93, 94]
+
+# isolated atom energies (eV)
+# from https://github.com/esoteric-ephemera/isolated_atomic_energies
+atom_energies:
+  1:  -1.1176
+  2:  -0.0005
+  3:  -0.2974
+  4:  -0.0181
+  5:  -0.4447
+  6:  -1.3865
+  7:  -3.1256
+  8:  -1.9067
+  9:  -0.7674
+  10: -0.0121
+  11: -0.2285
+  12: -0.0958
+  13: -0.3122
+  14: -0.8689
+  15: -1.8879
+  16: -1.0746
+  17: -0.3714
+  18: -0.0502
+  19: -0.2277
+  20: -0.0927
+  21: -2.2127
+  22: -2.6397
+  23: -3.7438
+  24: -5.6018
+  25: -5.3235
+  26: -3.5955
+  27: -2.1496
+  28: -1.0536
+  29: -0.6027
+  30: -0.1645
+  31: -0.4043
+  32: -0.8916
+  33: -1.6834
+  34: -0.8716
+  35: -0.2651
+  36: -0.0331
+  37: -0.1879
+  38: -0.068
+  39: -2.2868
+  40: -2.3603
+  41: -3.1513
+  42: -4.6011
+  43: -3.5438
+  44: -1.6595
+  45: -1.6479
+  46: -1.4776
+  47: -0.3388
+  48: -0.1672
+  49: -0.4087
+  50: -0.8167
+  51: -1.4107
+  52: -0.7239
+  53: -0.1703
+  54: -0.0097
+  55: -0.1369
+  56: -0.0344
+  57: -0.8455
+  58: -1.3876
+  59: -0.5491
+  60: -0.5186
+  61: -0.4895
+  62: -0.4683
+  63: -8.3662
+  64: -10.4088
+  65: -0.3982
+  66: -0.3886
+  67: -0.3834
+  68: -0.3857
+  69: -0.3168
+  70: -0.064
+  71: -0.3808
+  72: -3.527
+  73: -3.7421
+  74: -4.6555
+  75: -3.4276
+  76: -2.8979
+  77: -1.1789
+  78: -0.5638
+  79: -0.2872
+  80: -0.1235
+  81: -0.3606
+  82: -0.7674
+  83: -1.326
+  89: -0.3866
+  90: -1.1045
+  91: -2.553
+  92: -4.9889
+  93: -7.7017
+  94: -10.8084
+
+avg_n_edges: 736.2363228968411
+avg_n_neighbors: 39.200198903821516
+avg_n_nodes: 18.68197878523378
+max_n_edges: 17940
+max_n_nodes: 236
+# NOTE: scale and shift calculated from MPtrj with esoteric-ephemera isolated atom energies
+scale: 0.8080419656942678
+shift: -4.3250839528546265
+
+# model specific
+hidden_irreps: "128x0e + 64x1o + 32x2e + 32x3o"
+lmax: 3
+n_layers: 4
+radial_basis_size: 8
+radial_mlp_size: 64
+radial_mlp_layers: 2
+radial_polynomial_p: 6.0
+mlp_init_scale: 4.0
+index_weights: false
+layer_norm: true
+kernel: True
+
+# training specific
+optimizer: "muon"
+learning_rate: 0.003
+warmup_epochs: 0.0
+warmup_factor: 0.0 
+grad_clip_norm: 100.0
+weight_decay: 1.0e-3
+batch_size: 128  # NOTE: per device (used 4 GPUs for training)
+n_epochs: 3
+energy_weight: 20.0
+force_weight: 20.0
+stress_weight: 5.0
+loss_type: "mae"
+log_every: 100
+ema_decay: 0.999
