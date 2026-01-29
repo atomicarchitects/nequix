@@ -32,8 +32,7 @@ extra_stress_weight: 50.0 # stress weight for the extra mptrj training steps
 optimizer: "adam"
 learning_rate: 0.0001
 checkpoint_grad_energy: false  # for smaller GPUs, might need to use gradient checkpointing for the energy
-# warmup_epochs: 0.1
-# warmup_factor: 0.2
+
 grad_clip_norm: 100.0
 weight_decay: 1.0e-3
 batch_size: 16  # approximate batch size NOTE: per device
