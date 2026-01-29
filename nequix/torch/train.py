@@ -354,11 +354,6 @@ def train(config_path: str):
         if "shift" in config:
             model.shift = torch.tensor(config["shift"])
         model.to(device)
-    
-    if "readout_reinitialize" in config and config["readout_reinitialize"]:
-        model.readout = o3.Linear(irreps_in=model.readout.irreps_in,
-                                  irreps_out=model.readout.irreps_out)
-        model.to(device)
 
     if rank == 0:
         print(model)
@@ -466,7 +461,7 @@ def train(config_path: str):
             TriggerWandbSyncHook() if os.environ.get("WANDB_MODE") == "offline" else lambda: None
         )
 
-        wandb_init_kwargs = {"entity": "nequix-omat", "project": "nequix", "config": config}
+        wandb_init_kwargs = {"project": "nequix", "config": config}
         if wandb_run_id:
             wandb_init_kwargs.update({"id": wandb_run_id, "resume": "allow"})
 
@@ -493,7 +488,7 @@ def train(config_path: str):
 
         # Backward pass
         total_loss.backward()
-        
+
         # Gradient clipping
         if "grad_clip_norm" in config:
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config["grad_clip_norm"])

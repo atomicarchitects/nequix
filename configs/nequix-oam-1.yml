@@ -3,9 +3,6 @@ state_path: "checkpoints/nequix-oam-1.pkl" # for saving/resuming training
 
 finetune_from: "models/nequix-omat-1.pt"
 
-# reinitialize readout layer
-readout_initialization: true
-
 cutoff: 6.0
 
 # per eSEN paper - 8 copies of MPtrj + sAlex

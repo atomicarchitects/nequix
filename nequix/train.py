@@ -322,7 +322,7 @@ def train(config_path: str):
             start_epoch,
             best_val_loss,
             wandb_run_id,
-        ) = load_training_state(config["resume_from"]) 
+        ) = load_training_state(config["resume_from"])
 
     wandb_init_kwargs = {"project": "nequix", "config": config}
     if wandb_run_id:

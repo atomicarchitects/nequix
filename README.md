@@ -158,6 +158,8 @@ To run PFT on the OAM base model, follow the data download instructions below an
 uv run nequix/pft/train.py configs/nequix-oam-1-pft.yml
 ```
 
+Both PFT training runs take about 140 hours on a single A100.
+
 ## Training OMat/OAM base models
 
 To reproduce our training runs for the OMat and OAM base models run the following. First download OMat and sAlex data:
