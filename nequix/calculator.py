@@ -46,8 +46,7 @@ class NequixCalculator(Calculator):
         capacity_multiplier: float = 1.1,  # Only for jax backend
         backend: str = "jax",
         use_kernel: bool = True,  # Only for torch backend
-        # use_compile: bool = True,  # Only for torch backend
-        use_compile: bool = False,  # Only for torch backend
+        use_compile: bool = True,  # Only for torch backend
         **kwargs,
     ):
         super().__init__(**kwargs)
