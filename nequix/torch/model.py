@@ -10,10 +10,9 @@ from e3nn.util.jit import compile_mode
 
 from nequix.torch.layer_norm import RMSLayerNorm
 
-# Borrowed from https://github.com/mir-group/pytorch_runstats
-
 
 def _broadcast(src: torch.Tensor, other: torch.Tensor, dim: int):
+    # borrowed from https://github.com/mir-group/pytorch_runstats
     if dim < 0:
         dim = other.dim() + dim
     if src.dim() == 1:
@@ -33,6 +32,7 @@ def scatter(
     dim_size: Optional[int] = None,
     reduce: str = "sum",
 ) -> torch.Tensor:
+    # borrowed from https://github.com/mir-group/pytorch_runstats
     assert reduce == "sum"  # for now, TODO
     index = _broadcast(index, src, dim)
     if out is None:
@@ -74,10 +74,8 @@ def polynomial_cutoff(x: torch.Tensor, r_max: float, p: float) -> torch.Tensor:
     return out * torch.where(x < 1.0, 1.0, 0.0)
 
 
-# Borrowed from https://github.com/e3nn/e3nn.git
-
-
 def normalspace(n: int, device=None, dtype=None) -> torch.Tensor:
+    # borrowed from https://github.com/e3nn/e3nn.git
     return np.sqrt(2) * scipy.special.erfinv(np.linspace(-1.0, 1.0, n + 2)[1:-1])
 
 
@@ -377,7 +375,7 @@ class NequixTorchConvolution(torch.nn.Module):
         assert not index_weights, "Index weights are not supported in o3.Linear"
         self.index_weights = index_weights
         self.kernel = kernel
-        self.register_buffer("avg_n_neighbors", torch.tensor(avg_n_neighbors))
+        self.avg_n_neighbors = avg_n_neighbors
 
         self.linear_1 = o3.Linear(
             irreps_in=input_irreps.regroup(),
@@ -472,12 +470,12 @@ class NequixTorchConvolution(torch.nn.Module):
         if self.kernel:
             messages_agg = self.sort(
                 self.tp_conv(messages, sh, radial_message, receivers, senders)
-            ) / torch.sqrt(self.avg_n_neighbors)
+            ) / np.sqrt(self.avg_n_neighbors)
         else:
             messages = self.tp(messages[senders], sh, radial_message)
-            messages_agg = scatter(
-                messages, receivers, dim=0, dim_size=features.size(0)
-            ) / torch.sqrt(self.avg_n_neighbors)
+            messages_agg = scatter(messages, receivers, dim=0, dim_size=features.size(0)) / np.sqrt(
+                self.avg_n_neighbors
+            )
             messages_agg = self.sort(messages_agg)
 
         skip = self.skip(species, features) if self.index_weights else self.skip(features)
@@ -516,13 +514,11 @@ class NequixTorch(torch.nn.Module):
         self.n_species = n_species
         self.radial_basis_size = radial_basis_size
         self.radial_polynomial_p = radial_polynomial_p
-        self.register_buffer("shift", torch.tensor(shift))
-        self.register_buffer("scale", torch.tensor(scale))
+        self.shift = shift
+        self.scale = scale
         self.register_buffer(
             "atom_energies",
-            torch.tensor(atom_energies, dtype=torch.float64)
-            if atom_energies is not None
-            else torch.zeros(n_species, dtype=torch.float64),
+            torch.tensor(atom_energies) if atom_energies is not None else torch.zeros(n_species),
         )
 
         input_irreps = o3.Irreps(f"{n_species}x0e")
@@ -714,7 +710,7 @@ def load_model(path: str, use_kernel=False) -> tuple[NequixTorch, dict]:
             scale=config["scale"],
             avg_n_neighbors=config["avg_n_neighbors"],
             atom_energies=[config["atom_energies"][str(n)] for n in config["atomic_numbers"]],
-            kernel=config["kernel"] if "kernel" in config else use_kernel,
+            kernel=use_kernel,
         )
         state_dict = torch.load(f, map_location="cpu")
 

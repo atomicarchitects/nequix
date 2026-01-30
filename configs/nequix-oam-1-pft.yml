@@ -1,13 +1,22 @@
-state_path: "checkpoints/nequix-mp-1-pft.pkl"
-resume_from: "checkpoints/nequix-mp-1-pft.pkl"
-finetune_from: "models/nequix-mp-1.nqx"
+state_path: "checkpoints/nequix-oam-1-pft.pkl"
+resume_from: "checkpoints/nequix-oam-1-pft.pkl"
+finetune_from: "models/nequix-oam-1.nqx"
 
 # dataset specific
 train_path: "data/pbe-mdr/train-aselmdb"
 val_path: "data/pbe-mdr/val-aselmdb"
 
-extra_train_path: "data/mptrj-aselmdb"
-extra_val_frac: 0.05
+extra_train_path:
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/mptrj-aselmdb"
+ - "data/salex/train"
+extra_val_path: "data/salex/val"
 
 avg_n_edges: 5418.453349001175
 avg_n_nodes: 104.9225616921269
@@ -17,7 +26,7 @@ max_n_nodes: 306
 
 # training specific
 extra_train_steps: 4  # number of extra mptrj training steps per phonon train step
-extra_energy_weight: 500.0 # energy weight for the extra mptrj training steps
+extra_energy_weight: 750.0 # energy weight for the extra mptrj training steps
 extra_force_weight: 200.0 # force weight for the extra mptrj training steps
 extra_stress_weight: 50.0 # stress weight for the extra mptrj training steps
 optimizer: "adam"
@@ -27,12 +36,15 @@ checkpoint_grad_energy: false  # for smaller GPUs, might need to use gradient ch
 grad_clip_norm: 100.0
 weight_decay: 1.0e-3
 batch_size: 16  # approximate batch size NOTE: per device
-n_graph: 18   # maximum number of graphs in a batch (+1 for padding)
-n_epochs: 150
+n_graph: 18   # maximum number of graphs in a batch (allow up to 6 graphs +1 for padding)
+n_epochs: 200
 energy_weight: 0.0
 force_weight: 20.0
 stress_weight: 5.0
+# energy_weight: 20.0
+# force_weight: 20.0
+# stress_weight: 5.0
 hessian_weight: 100.0
-val_every: 2
+val_every: 5
 log_every: 100
 ema_decay: 0.999

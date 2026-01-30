@@ -223,7 +223,7 @@ def convert_model_jax_to_torch(jax_model, config, use_kernel):
         scale=config["scale"],
         avg_n_neighbors=config["avg_n_neighbors"],
         atom_energies=[config["atom_energies"][str(n)] for n in config["atomic_numbers"]],
-        kernel=config["kernel"] if "kernel" in config else use_kernel,
+        kernel=use_kernel,
     )
     for layer_idx in range(len(jax_model.layers)):
         torch_model = convert_layer_jax_to_torch(layer_idx, jax_model, torch_model)
