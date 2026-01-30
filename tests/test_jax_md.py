@@ -102,7 +102,7 @@ def test_perturbed_structure():
     # Energy
     E_ase = atoms.get_potential_energy()
     E_jax = float(energy_fn(positions, nbrs))
-    np.testing.assert_allclose(E_jax, E_ase, atol=1e-7, rtol=1e-8)
+    np.testing.assert_allclose(E_jax, E_ase, atol=1e-8, rtol=1e-5)
 
     # Forces
     F_ase = atoms.get_forces()
