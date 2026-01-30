@@ -24,14 +24,6 @@ from nequix.torch.model import save_model as save_model_torch
 
 import torch
 
-backend_mapper = {"nqx": "jax", "pt": "torch"}
-
-
-def backend_finder(model_path):
-    if not isinstance(model_path, str):
-        model_path = str(model_path)
-    return backend_mapper[model_path.split(".")[-1]]
-
 
 class NequixCalculator(Calculator):
     implemented_properties = ["energy", "free_energy", "forces", "stress"]
@@ -51,7 +43,7 @@ class NequixCalculator(Calculator):
         model_name: str = "nequix-mp-1",
         model_path: str = None,
         capacity_multiplier: float = 1.1,  # Only for jax backend
-        backend: str = "torch",
+        backend: str = "jax",
         use_kernel: bool = True,  # Only for torch backend
         use_compile: bool = True,  # Only for torch backend
         **kwargs,
@@ -61,43 +53,45 @@ class NequixCalculator(Calculator):
         if use_kernel:
             assert torch.cuda.is_available(), "Kernels need GPU environment"
 
-        # Download the model if not provided and create directory if not exists
-        if model_path is None:
-            # TODO: Add suport for pt in the future
-            filename = f"{model_name}.nqx"
-            for base_path in [Path("./models/"), Path("~/.cache/nequix/models/").expanduser()]:
-                model_path = base_path / filename
-                if model_path.exists():
-                    break
+        base_path = Path("~/.cache/nequix/models/").expanduser()
+        ext_for_backend = "nqx" if backend == "jax" else "pt"
 
-            if not model_path.exists():
-                model_path.parent.mkdir(parents=True, exist_ok=True)
-                urllib.request.urlretrieve(self.URLS[model_name], model_path)
-        else:
+        if model_path is not None:
             model_path = Path(model_path)
-
-        model_path_backend = backend_finder(model_path)
-
-        if model_path_backend == "jax" and backend == "jax":
-            self.model, self.config = load_model_jax(model_path)
-
-        elif model_path_backend == "torch" and backend == "torch":
-            self.model, self.config = load_model_torch(model_path, use_kernel)
-
-        elif model_path_backend == "torch" and backend == "jax":
-            torch_model, torch_config = load_model_torch(model_path, use_kernel)
-            print("Converting PyTorch model to JAX ...")
-            self.model, self.config = convert_model_torch_to_jax(torch_model, torch_config)
-            save_model_jax(model_path.parent / f"{model_name}.nqx", self.model, self.config)
-            print("Model saved to ", model_path.parent / f"{model_name}.nqx")
-        elif model_path_backend == "jax" and backend == "torch":
-            jax_model, jax_config = load_model_jax(model_path)
-            print("Converting JAX model to PyTorch ...")
-            self.model, self.config = convert_model_jax_to_torch(jax_model, jax_config, use_kernel)
-            save_model_torch(model_path.parent / f"{model_name}.pt", self.model, self.config)
-            print("Model saved to ", model_path.parent / f"{model_name}.pt")
         else:
-            raise ValueError(f"Backend {backend} not supported")
+            # attempt to load checkpoint with desired backend
+            model_path = base_path / f"{model_name}.{ext_for_backend}"
+            if not model_path.exists():
+                # otherwise use nqx checkpoint
+                model_path = base_path / f"{model_name}.nqx"
+                if not model_path.exists():
+                    # download if necessary
+                    model_path.parent.mkdir(parents=True, exist_ok=True)
+                    urllib.request.urlretrieve(self.URLS[model_name], model_path)
+
+        path_backend = "jax" if model_path.suffix == ".nqx" else "torch"
+        if path_backend == backend:
+            if backend == "jax":
+                self.model, self.config = load_model_jax(model_path)
+            else:
+                self.model, self.config = load_model_torch(model_path, use_kernel)
+        else:
+            # Convert and save
+            if path_backend == "torch":
+                torch_model, torch_config = load_model_torch(model_path, use_kernel)
+                print("Converting PyTorch model to JAX ...")
+                self.model, self.config = convert_model_torch_to_jax(torch_model, torch_config)
+                out_path = model_path.parent / f"{model_name}.nqx"
+                save_model_jax(out_path, self.model, self.config)
+            else:
+                jax_model, jax_config = load_model_jax(model_path)
+                print("Converting JAX model to PyTorch ...")
+                self.model, self.config = convert_model_jax_to_torch(
+                    jax_model, jax_config, use_kernel
+                )
+                out_path = model_path.parent / f"{model_name}.pt"
+                save_model_torch(out_path, self.model, self.config)
+            print("Model saved to ", out_path)
 
         if backend == "torch":
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

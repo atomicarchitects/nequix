@@ -7,6 +7,7 @@ import equinox as eqx
 from nequix.torch.model import NequixTorch
 from nequix.model import Nequix
 
+
 # copied from https://github.com/facebookresearch/vissl/blob/09270ed25a6c2cf71263d955b64cbe076d34ac45/vissl/data/data_helper.py#L93
 class StatefulDistributedSampler(DistributedSampler):
     """

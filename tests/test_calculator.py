@@ -15,7 +15,10 @@ _atoms_perturbed = si()
 _atoms_perturbed.positions[0] += [0.1, 0.05, -0.05]
 
 
-array = lambda x: np.array(x, dtype=np.float32)
+def array(x):
+    return np.array(x, dtype=np.float32)
+
+
 REFERENCE_DATA = {
     "relaxed": {
         "atoms": _atoms_relaxed,
@@ -63,6 +66,7 @@ REFERENCE_DATA = {
         },
     },
 }
+
 
 @pytest.fixture(params=["relaxed", "perturbed"])
 def structure(request):
