@@ -50,7 +50,7 @@ class NequixCalculator(Calculator):
     ):
         super().__init__(**kwargs)
 
-        if use_kernel:
+        if use_kernel and backend == "torch":
             assert torch.cuda.is_available(), "Kernels need GPU environment"
 
         base_path = Path("~/.cache/nequix/models/").expanduser()
