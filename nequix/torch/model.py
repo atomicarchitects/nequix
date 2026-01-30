@@ -710,7 +710,7 @@ def load_model(path: str, use_kernel=False) -> tuple[NequixTorch, dict]:
             scale=config["scale"],
             avg_n_neighbors=config["avg_n_neighbors"],
             atom_energies=[config["atom_energies"][str(n)] for n in config["atomic_numbers"]],
-            kernel=config["kernel"] if "kernel" in config else use_kernel,
+            kernel=use_kernel,
         )
         state_dict = torch.load(f, map_location="cpu")
 
