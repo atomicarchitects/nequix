@@ -14,10 +14,23 @@ from nequix.data import (
     preprocess_graph,
 )
 
-file_format_mapper = {
-    "jax": "nqx",
-    "torch": "pt",
-}
+
+from nequix.torch.utils import convert_model_torch_to_jax
+from nequix.torch.utils import convert_model_jax_to_torch
+from nequix.model import load_model as load_model_jax
+from nequix.model import save_model as save_model_jax
+from nequix.torch.model import load_model as load_model_torch
+from nequix.torch.model import save_model as save_model_torch
+
+import torch
+
+backend_mapper = {"nqx": "jax", "pt": "torch"}
+
+
+def backend_finder(model_path):
+    if not isinstance(model_path, str):
+        model_path = str(model_path)
+    return backend_mapper[model_path.split(".")[-1]]
 
 
 class NequixCalculator(Calculator):
@@ -31,8 +44,6 @@ class NequixCalculator(Calculator):
         "nequix-mp-1": "https://github.com/atomicarchitects/nequix/raw/7c2854de8e754b1a60274c7d9d2e014989ed632e/models/nequix-mp-1.nqx",
         "nequix-mp-1-pft": "https://github.com/atomicarchitects/nequix/raw/7c2854de8e754b1a60274c7d9d2e014989ed632e/models/nequix-mp-1-pft.nqx",
         "nequix-mp-1-pft-no-cotrain": "https://github.com/atomicarchitects/nequix/raw/7c2854de8e754b1a60274c7d9d2e014989ed632e/models/nequix-mp-1-pft-no-cotrain.nqx",
-        "nequix-mp-1-kernel": "https://www.dropbox.com/scl/fi/0zavqdbl4n7ep9xxm12lo/nequix-mp-1-kernel.pt?rlkey=7qx8d0pdeo0p3xa74ygkcv655&st=th8f8j12&dl=1",
-        "nequix-mp-1-no-kernel": "https://www.dropbox.com/scl/fi/c62lm1b12irf2afezwsud/nequix-mp-1-no-kernel.pt?rlkey=ywpg5qy75e4pco93l1oswmlb6&st=w17qpl2k&dl=1",
     }
 
     def __init__(
@@ -40,20 +51,20 @@ class NequixCalculator(Calculator):
         model_name: str = "nequix-mp-1",
         model_path: str = None,
         capacity_multiplier: float = 1.1,  # Only for jax backend
-        backend: str = "jax",
-        use_compile: bool = True,  # Only for torch backend
+        backend: str = "torch",
         use_kernel: bool = True,  # Only for torch backend
+        use_compile: bool = True,  # Only for torch backend
         **kwargs,
     ):
         super().__init__(**kwargs)
+
+        if use_kernel:
+            assert torch.cuda.is_available(), "Kernels need GPU environment"
+
+        # Download the model if not provided and create directory if not exists
         if model_path is None:
-            if backend == "torch":
-                import torch
-
-                kernel_name = "kernel" if torch.cuda.is_available() and use_kernel else "no-kernel"
-                model_name = f"{model_name}-{kernel_name}"
-
-            filename = f"{model_name}.{file_format_mapper[backend]}"
+            # TODO: Add suport for pt in the future
+            filename = f"{model_name}.nqx"
             for base_path in [Path("./models/"), Path("~/.cache/nequix/models/").expanduser()]:
                 model_path = base_path / filename
                 if model_path.exists():
@@ -62,25 +73,39 @@ class NequixCalculator(Calculator):
             if not model_path.exists():
                 model_path.parent.mkdir(parents=True, exist_ok=True)
                 urllib.request.urlretrieve(self.URLS[model_name], model_path)
+        else:
+            model_path = Path(model_path)
 
-        if backend == "jax":
-            from nequix.model import load_model
+        model_path_backend = backend_finder(model_path)
 
-            self.model, self.config = load_model(model_path)
-        elif backend == "torch":
-            import torch
+        if model_path_backend == "jax" and backend == "jax":
+            self.model, self.config = load_model_jax(model_path)
 
-            from nequix.torch.model import load_model
+        elif model_path_backend == "torch" and backend == "torch":
+            self.model, self.config = load_model_torch(model_path, use_kernel)
 
-            self.model, self.config = load_model(model_path)
+        elif model_path_backend == "torch" and backend == "jax":
+            torch_model, torch_config = load_model_torch(model_path, use_kernel)
+            print("Converting PyTorch model to JAX ...")
+            self.model, self.config = convert_model_torch_to_jax(torch_model, torch_config)
+            save_model_jax(model_path.parent / f"{model_name}.nqx", self.model, self.config)
+            print("Model saved to ", model_path.parent / f"{model_name}.nqx")
+        elif model_path_backend == "jax" and backend == "torch":
+            jax_model, jax_config = load_model_jax(model_path)
+            print("Converting JAX model to PyTorch ...")
+            self.model, self.config = convert_model_jax_to_torch(jax_model, jax_config, use_kernel)
+            save_model_torch(model_path.parent / f"{model_name}.pt", self.model, self.config)
+            print("Model saved to ", model_path.parent / f"{model_name}.pt")
+        else:
+            raise ValueError(f"Backend {backend} not supported")
+
+        if backend == "torch":
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.model = self.model.to(self.device)
             self.model.eval()
             # setting compile_state to True would skip compilation else will compile for the first time
             # Only use compile for GPUs
             self.compile_state = False if use_compile and torch.cuda.is_available() else True
-        else:
-            raise ValueError(f"Backend {backend} not supported")
 
         self.atom_indices = atomic_numbers_to_indices(self.config["atomic_numbers"])
         self.cutoff = self.config["cutoff"]
@@ -109,8 +134,6 @@ class NequixCalculator(Calculator):
             forces = forces[: len(atoms)]
 
         elif self.backend == "torch":
-            import torch
-
             graph = dict_to_pytorch_geometric(processed_graph)
             graph.n_graph = torch.zeros(graph.x.shape[0], dtype=torch.int64).to(self.device)
             graph = graph.to(self.device)
