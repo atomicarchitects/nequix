@@ -693,7 +693,7 @@ def save_model(path: str, model: torch.nn.Module, config: dict):
         torch.save(model.state_dict(), f)
 
 
-def load_model(path: str) -> tuple[NequixTorch, dict]:
+def load_model(path: str, use_kernel=False) -> tuple[NequixTorch, dict]:
     """Load a model and its config from a file."""
     with open(path, "rb") as f:
         config = json.loads(f.readline().decode())
@@ -714,8 +714,14 @@ def load_model(path: str) -> tuple[NequixTorch, dict]:
             scale=config["scale"],
             avg_n_neighbors=config["avg_n_neighbors"],
             atom_energies=[config["atom_energies"][str(n)] for n in config["atomic_numbers"]],
-            kernel=config["kernel"],
+            kernel=config["kernel"] if "kernel" in config else use_kernel,
         )
         state_dict = torch.load(f, map_location="cpu")
-        model.load_state_dict(state_dict)
+
+        # filter out tp weights since these can be recomputed, and aren't used
+        # in the kernel version
+        state_dict = {k: v for k, v in state_dict.items() if ".tp." not in k}
+        # allow missing .tp. weights for the non kernel version
+        model.load_state_dict(state_dict, strict=False)
+
         return model, config
