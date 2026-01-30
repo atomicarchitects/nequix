@@ -15,14 +15,8 @@ from nequix.data import (
 )
 
 
-from nequix.torch.utils import convert_model_torch_to_jax
-from nequix.torch.utils import convert_model_jax_to_torch
 from nequix.model import load_model as load_model_jax
 from nequix.model import save_model as save_model_jax
-from nequix.torch.model import load_model as load_model_torch
-from nequix.torch.model import save_model as save_model_torch
-
-import torch
 
 
 class NequixCalculator(Calculator):
@@ -52,12 +46,15 @@ class NequixCalculator(Calculator):
         capacity_multiplier: float = 1.1,  # Only for jax backend
         backend: str = "jax",
         use_kernel: bool = True,  # Only for torch backend
-        use_compile: bool = True,  # Only for torch backend
+        # use_compile: bool = True,  # Only for torch backend
+        use_compile: bool = False,  # Only for torch backend
         **kwargs,
     ):
         super().__init__(**kwargs)
 
         if use_kernel and backend == "torch":
+            import torch
+
             assert torch.cuda.is_available(), "Kernels need GPU environment"
 
         base_path = Path("~/.cache/nequix/models/").expanduser()
@@ -81,26 +78,36 @@ class NequixCalculator(Calculator):
             if backend == "jax":
                 self.model, self.config = load_model_jax(model_path)
             else:
+                from nequix.torch.model import load_model as load_model_torch
+
                 self.model, self.config = load_model_torch(model_path, use_kernel)
         else:
             # Convert and save
             if path_backend == "torch":
+                from nequix.torch.utils import convert_model_torch_to_jax
+
                 torch_model, torch_config = load_model_torch(model_path, use_kernel)
                 print("Converting PyTorch model to JAX ...")
                 self.model, self.config = convert_model_torch_to_jax(torch_model, torch_config)
                 out_path = model_path.parent / f"{model_name}.nqx"
                 save_model_jax(out_path, self.model, self.config)
             else:
+                from nequix.torch.utils import convert_model_jax_to_torch
+
                 jax_model, jax_config = load_model_jax(model_path)
                 print("Converting JAX model to PyTorch ...")
                 self.model, self.config = convert_model_jax_to_torch(
                     jax_model, jax_config, use_kernel
                 )
                 out_path = model_path.parent / f"{model_name}.pt"
+                from nequix.torch.model import save_model as save_model_torch
+
                 save_model_torch(out_path, self.model, self.config)
             print("Model saved to ", out_path)
 
         if backend == "torch":
+            import torch
+
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.model = self.model.to(self.device)
             self.model.eval()
@@ -126,15 +133,27 @@ class NequixCalculator(Calculator):
                 or ("numbers" in system_changes)
                 or graph.n_edge[0] > self._capacity
             ):
-                self._capacity = int(np.ceil(graph.n_edge[0] * self._capacity_multiplier))
-            # Pad the graph
-            graph = jraph.pad_with_graphs(
-                graph, n_node=graph.n_node[0] + 1, n_edge=self._capacity, n_graph=2
-            )
+                raw = int(np.ceil(graph.n_edge[0] * self._capacity_multiplier))
+                # round up edges to the nearest multiple of 64
+                # NB: this avoids excessive recompilation in high-throughput
+                # workflows (e.g.  material relaxtions) but this number may need
+                # to be tuned depending on the system sizes
+                self._capacity = ((raw + 63) // 64) * 64
+
+            # round up nodes to the nearest multiple of 8
+            # NB: this avoids excessive recompilation in high-throughput
+            # workflows (e.g. material relaxtions) but this number may need to
+            # be tuned depending on the system sizes
+            n_node = ((graph.n_node[0] + 8) // 8) * 8
+
+            # pad the graph
+            graph = jraph.pad_with_graphs(graph, n_node=n_node, n_edge=self._capacity, n_graph=2)
             energy, forces, stress = eqx.filter_jit(self.model)(graph)
             forces = forces[: len(atoms)]
 
         elif self.backend == "torch":
+            import torch
+
             graph = dict_to_pytorch_geometric(processed_graph)
             graph.n_graph = torch.zeros(graph.x.shape[0], dtype=torch.int64).to(self.device)
             graph = graph.to(self.device)
