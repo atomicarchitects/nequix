@@ -1,6 +1,15 @@
 <h1 align='center'>Nequix</h1>
 
-Source code for the [Nequix foundation model](https://arxiv.org/abs/2508.16067), and [Phonon fine-tuning (PFT)](https://arxiv.org/abs/2601.07742).
+Source code and model weights for the [Nequix foundation model](https://arxiv.org/abs/2508.16067), and [Phonon fine-tuning (PFT)](https://arxiv.org/abs/2601.07742).
+
+Model | Dataset | Theory | Reference
+---   | ---     | ---    | ---
+`nequix-mp-1`| MPtrj | DFT (PBE+U) | [Nequix](https://arxiv.org/abs/2508.16067)
+`nequix-mp-1-pft`| MPtrj, MDR Phonon | DFT (PBE+U) |[PFT](https://arxiv.org/abs/2601.07742)
+`nequix-omat-1`| OMat24 | DFT (PBE+U, VASP 54) | [PFT](https://arxiv.org/abs/2601.07742)
+`nequix-oam-1`| OMat24, sAlex, MPtrj | DFT (PBE+U) | [PFT](https://arxiv.org/abs/2601.07742)
+`nequix-oam-1-pft`| OMat24, sAlex, MPtrj, MDR Phonon | DFT (PBE+U) | [PFT](https://arxiv.org/abs/2601.07742)
+
 
 ## Usage
 
@@ -96,7 +105,7 @@ config is per-device, so you should be able to run this on any number of GPUs
 (although hyperparameters like learning rate are often sensitive to global batch
 size, so keep in mind).
 
-## Phonon Fine-tuning (PFT)
+## Phonon fine-tuning (PFT)
 
 
 First sync extra dependencies with
@@ -105,7 +114,7 @@ First sync extra dependencies with
 uv sync --extra pft
 ```
 
-### Phonon Calculations
+### Phonon calculations
 
 We provide pretrained model weights for the co-trained (better alignment with
 MPtrj) and non co-trained models in `models/nequix-mp-1-pft.nqx` and
@@ -142,6 +151,43 @@ To run PFT *with* co-training run (note this requires `mptrj-aselmdb` preprocess
 ```bash
 uv run nequix/pft/train.py configs/nequix-mp-1-pft.yml
 ```
+
+To run PFT on the OAM base model, follow the data download instructions below and then run:
+
+```bash
+uv run nequix/pft/train.py configs/nequix-oam-1-pft.yml
+```
+
+Both PFT training runs take about 140 hours on a single A100.
+
+## Training OMat/OAM base models
+
+To reproduce our training runs for the OMat and OAM base models run the following. First download OMat and sAlex data:
+
+
+```bash
+./data/download_omat.sh <path to storage location>
+```
+
+Then symlink to `./data`
+
+```bash
+ln -s <path to storage location>/omat ./data/omat
+ln -s <path to storage location>/salex ./data/salex
+ln -s <path to storage location>/mptrj-aselmdb ./data/mptrj-aselmdb
+```
+
+To train the OMat model, run:
+```bash
+uv run torchrun --nproc_per_node=4 nequix/torch/train.py configs/nequix-omat-1.yml
+```
+
+This takes roughly 60 hours on a 4 x A100 node. To fine-tune the OAM model, copy
+the OMat model to `models/nequix-omat-1.pt` and run
+```bash
+uv run torchrun --nproc_per_node=4 nequix/torch/train.py configs/nequix-oam-1.yml
+```
+This takes roughly 10 hours on a 4 x A100 node.
 
 
 ## Citation

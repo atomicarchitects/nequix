@@ -14,8 +14,14 @@ from torch_geometric.loader import DataLoader
 from wandb_osh.hooks import TriggerWandbSyncHook
 
 import wandb
-from nequix.data import AseDBDataset
-from nequix.torch.model import NequixTorch, get_optimizer_param_groups, save_model, scatter
+from nequix.data import AseDBDataset, ConcatDataset
+from nequix.torch.model import (
+    NequixTorch,
+    get_optimizer_param_groups,
+    load_model,
+    save_model,
+    scatter,
+)
 from nequix.torch.utils import StatefulDistributedSampler
 
 
@@ -212,12 +218,25 @@ def train(config_path: str):
         world_size = 1
         print(f"Using device: {device}")
 
-    train_dataset = AseDBDataset(
-        file_path=config["train_path"],
-        atomic_numbers=config["atomic_numbers"],
-        cutoff=config["cutoff"],
-        backend="torch",
-    )
+    if isinstance(config["train_path"], list):
+        train_dataset = ConcatDataset(
+            [
+                AseDBDataset(
+                    file_path=path,
+                    atomic_numbers=config["atomic_numbers"],
+                    cutoff=config["cutoff"],
+                    backend="torch",
+                )
+                for path in config["train_path"]
+            ]
+        )
+    else:
+        train_dataset = AseDBDataset(
+            file_path=config["train_path"],
+            atomic_numbers=config["atomic_numbers"],
+            cutoff=config["cutoff"],
+            backend="torch",
+        )
     if "valid_frac" in config:
         train_dataset, val_dataset = train_dataset.split(valid_frac=config["valid_frac"])
     else:
@@ -322,6 +341,19 @@ def train(config_path: str):
         atom_energies=atom_energies,
         kernel=config["kernel"],
     ).to(device)
+
+    if "finetune_from" in config and Path(config["finetune_from"]).exists():
+        model, _ = load_model(config["finetune_from"])
+        if "atom_energies" in config:
+            model.atom_energies = torch.tensor(
+                [config["atom_energies"][n] for n in config["atomic_numbers"]],
+                dtype=torch.float64,
+            )
+        if "scale" in config:
+            model.scale = torch.tensor(config["scale"])
+        if "shift" in config:
+            model.shift = torch.tensor(config["shift"])
+        model.to(device)
 
     if rank == 0:
         print(model)
@@ -459,8 +491,10 @@ def train(config_path: str):
 
         # Gradient clipping
         if "grad_clip_norm" in config:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config["grad_clip_norm"])
-
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config["grad_clip_norm"])
+        else:
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float("inf"))
+        metrics["grad_norm"] = grad_norm
         optimizer.step()
         scheduler.step()
 

@@ -127,7 +127,7 @@ warmup_epochs: 0.1
 warmup_factor: 0.2
 grad_clip_norm: 100.0
 weight_decay: 1.0e-3
-batch_size: 128  # NOTE: per device
+batch_size: 64  # NOTE: per device (used 4 GPUs for training)
 n_epochs: 100
 energy_weight: 20.0
 force_weight: 20.0
