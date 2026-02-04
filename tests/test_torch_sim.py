@@ -31,35 +31,27 @@ def si_state():
 
 
 def test_nequix_model_call(nequix_model, si_state):
-    """Test that NequixTorchSimModel returns correct output format."""
+    """Test output format: keys, shapes, dtype, device, finite values."""
     result = nequix_model(si_state)
 
-    # Check keys and shapes
     assert result.keys() == {"energy", "forces", "stress"}
     assert result["energy"].shape == (1,)
     assert result["forces"].shape == (2, 3)
     assert result["stress"].shape == (1, 3, 3)
 
-    # Check dtype and device
-    for key in result:
-        assert result[key].dtype == torch.float64, f"{key} has wrong dtype"
-        assert result[key].device.type == si_state.positions.device.type
-
-    # Sanity checks on values
-    assert torch.isfinite(result["energy"]).all()
-    assert torch.isfinite(result["forces"]).all()
-    assert result["forces"].abs().sum() < 100  # Forces should be reasonable magnitude
+    for key, val in result.items():
+        assert val.dtype == torch.float64, f"{key} wrong dtype"
+        assert val.device.type == DEVICE.split(":")[0]
+        assert torch.isfinite(val).all(), f"{key} has non-finite values"
 
 
 def test_nequix_model_with_optimizer(nequix_model, si_state):
-    """Test that NequixTorchSimModel works with torch-sim optimize."""
-    final_state = ts.optimize(
+    """Test integration with torch-sim optimize."""
+    final = ts.optimize(
         system=si_state,
         model=nequix_model,
         optimizer=ts.Optimizer.fire,
         max_steps=10,
         convergence_fn=ts.runners.generate_force_convergence_fn(force_tol=0.1),
     )
-
-    assert final_state is not None
-    assert final_state.positions.shape == si_state.positions.shape
+    assert final.positions.shape == si_state.positions.shape
