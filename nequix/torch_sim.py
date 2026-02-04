@@ -3,6 +3,8 @@
 This module provides a torch-sim compatible interface for the Nequix model,
 enabling batched geometry optimization with torch-sim's autobatching.
 
+Requires: pip install nequix[torch-sim]
+
 Usage:
     import torch_sim as ts
     from nequix.torch_sim import NequixTorchSimModel
@@ -20,13 +22,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numpy as np
-import torch
-from ase import Atoms
-
-from nequix.calculator import NequixCalculator
-
 if TYPE_CHECKING:
+    import torch
     from torch_sim import SimState
 
 
@@ -57,6 +54,10 @@ class NequixTorchSimModel:
         use_kernel: bool = True,
     ) -> None:
         """Initialize Nequix model with torch backend."""
+        import torch
+
+        from nequix.calculator import NequixCalculator
+
         self.calculator = NequixCalculator(
             model_name,
             backend="torch",
@@ -78,6 +79,10 @@ class NequixTorchSimModel:
                 - "forces": Tensor of shape (n_atoms, 3) with forces in eV/Å
                 - "stress": Tensor of shape (n_systems, 3, 3) with stress in eV/Å³
         """
+        import numpy as np
+        import torch
+        from ase import Atoms
+
         # Handle single structure case
         if state.system_idx is None or len(state.system_idx) == 0:
             n_systems = 1
