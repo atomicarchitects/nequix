@@ -85,9 +85,7 @@ class NequixCalculator(Calculator):
 
                 torch_model, torch_config = load_model_torch(model_path, use_kernel)
                 print("Converting PyTorch model to JAX ...")
-                self.model, self.config = convert_model_torch_to_jax(
-                    torch_model, torch_config
-                )
+                self.model, self.config = convert_model_torch_to_jax(torch_model, torch_config)
                 out_path = model_path.parent / f"{model_name}.nqx"
                 save_model_jax(out_path, self.model, self.config)
             else:
@@ -112,9 +110,7 @@ class NequixCalculator(Calculator):
             self.model.eval()
             # setting compile_state to True would skip compilation else will compile for the first time
             # Only use compile for GPUs
-            self.compile_state = (
-                False if use_compile and torch.cuda.is_available() else True
-            )
+            self.compile_state = False if use_compile and torch.cuda.is_available() else True
 
         self.atom_indices = atomic_numbers_to_indices(self.config["atomic_numbers"])
         self.cutoff = self.config["cutoff"]
@@ -148,9 +144,7 @@ class NequixCalculator(Calculator):
             n_node = ((graph.n_node[0] + 8) // 8) * 8
 
             # pad the graph
-            graph = jraph.pad_with_graphs(
-                graph, n_node=n_node, n_edge=self._capacity, n_graph=2
-            )
+            graph = jraph.pad_with_graphs(graph, n_node=n_node, n_edge=self._capacity, n_graph=2)
             energy, forces, stress = eqx.filter_jit(self.model)(graph)
             forces = forces[: len(atoms)]
 
@@ -158,9 +152,7 @@ class NequixCalculator(Calculator):
             import torch
 
             graph = dict_to_pytorch_geometric(processed_graph)
-            graph.n_graph = torch.zeros(graph.x.shape[0], dtype=torch.int64).to(
-                self.device
-            )
+            graph.n_graph = torch.zeros(graph.x.shape[0], dtype=torch.int64).to(self.device)
             graph = graph.to(self.device)
             if not self.compile_state:
                 from torch.fx.experimental.proxy_tensor import make_fx
@@ -199,9 +191,7 @@ class NequixCalculator(Calculator):
             # scatter is outside of the model to avoid compile issues
             from nequix.torch.model import scatter
 
-            energy = scatter(
-                energy_per_atom, graph.n_graph, dim=0, dim_size=graph.n_node.size(0)
-            )
+            energy = scatter(energy_per_atom, graph.n_graph, dim=0, dim_size=graph.n_node.size(0))
             energy, forces, stress = (
                 energy.detach().cpu(),
                 forces.detach().cpu(),
@@ -214,7 +204,5 @@ class NequixCalculator(Calculator):
         self.results["free_energy"] = energy
         self.results["forces"] = forces.numpy()
         self.results["stress"] = (
-            full_3x3_to_voigt_6_stress(stress[0].numpy())
-            if stress is not None
-            else None
+            full_3x3_to_voigt_6_stress(stress[0].numpy()) if stress is not None else None
         )

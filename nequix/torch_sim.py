@@ -100,14 +100,10 @@ class NequixTorchSimModel:
 
             energies.append(float(atoms.get_potential_energy()))
             forces_list.append(
-                torch.as_tensor(
-                    atoms.get_forces(), dtype=self.dtype, device=self.device
-                )
+                torch.as_tensor(atoms.get_forces(), dtype=self.dtype, device=self.device)
             )
             stresses.append(
-                torch.as_tensor(
-                    atoms.get_stress(voigt=False), dtype=self.dtype, device=self.device
-                )
+                torch.as_tensor(atoms.get_stress(voigt=False), dtype=self.dtype, device=self.device)
             )
             offset += n_at
 
