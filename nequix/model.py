@@ -1,6 +1,6 @@
 import json
 import math
-from typing import Any, Callable, Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 import e3nn_jax as e3nn
 import equinox as eqx
@@ -132,7 +132,7 @@ class NequixConvolution(eqx.Module):
     skip: e3nn.equinox.Linear
     layer_norm: Optional[RMSLayerNorm]
     sort: Sort
-    tp_conv: Optional[Any] = None
+    tp_conv: Optional[oeq.jax.TensorProductConv] = None
 
     def __init__(
         self,
@@ -549,7 +549,7 @@ def load_model(path: str, kernel: bool = False) -> tuple[Nequix, dict]:
             shift=config["shift"],
             scale=config["scale"],
             avg_n_neighbors=config["avg_n_neighbors"],
-            kernel=kernel,  # Backwards compatibility?
+            kernel=kernel,
             # NOTE: atom_energies will be in model weights
         )
         model = eqx.tree_deserialise_leaves(f, model)

@@ -120,11 +120,11 @@ def atoms(structure):
 @pytest.mark.parametrize("backend", ["jax", "torch"])
 @pytest.mark.parametrize("use_kernel", [True, False])
 def test_nequix_calculator_matches_reference(structure, atoms, model_name, backend, use_kernel):
-    if backend == "torch" and use_kernel and not torch.cuda.is_available():
-        pytest.skip("Torch kernel requires CUDA")
+    if use_kernel and not OEQ_AVAILABLE:
+        pytest.skip("OpenEquivariance not installed")
 
-    if backend == "jax" and use_kernel:
-        pytest.skip("No kernel support for JAX")
+    if use_kernel and backend == "torch" and not torch.cuda.is_available():
+        pytest.skip("Torch kernel requires CUDA")
 
     reference = REFERENCE_DATA[structure]["models"][model_name]
 

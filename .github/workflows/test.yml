@@ -10,7 +10,5 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --locked --all-extras --dev
       - name: Install OpenEquivariance
-        run: |
-          uv pip install 'openequivariance[jax] @ git+https://github.com/PASSIONLab/OpenEquivariance.git#subdirectory=openequivariance'
-          uv pip install 'git+https://github.com/PASSIONLab/OpenEquivariance.git#subdirectory=openequivariance_extjax' --no-build-isolation
+        run: uv pip install 'openequivariance @ git+https://github.com/PASSIONLab/OpenEquivariance.git#subdirectory=openequivariance'
       - run: uv run pytest tests

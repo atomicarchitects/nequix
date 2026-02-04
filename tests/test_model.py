@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from nequix.layer_norm import RMSLayerNorm
-from nequix.model import Nequix, OEQ_AVAILABLE, load_model, save_model, weight_decay_mask
+from nequix.model import Nequix, load_model, save_model, weight_decay_mask
 
 
 def dummy_graph():
@@ -182,58 +182,3 @@ def test_weight_decay_mask():
     assert not mask.layers[0].radial_mlp.layers[0].bias
     assert not any(mask.layers[0].layer_norm.affine_weight)
     assert not mask.layers[0].layer_norm.affine_bias
-
-
-@pytest.mark.skipif(not OEQ_AVAILABLE, reason="OpenEquivariance not installed")
-def test_model_with_openequivariance_kernel():
-    """Test model with OpenEquivariance kernels."""
-    key = jax.random.key(0)
-
-    model_no_kernel = Nequix(
-        key,
-        n_species=2,
-        lmax=1,
-        hidden_irreps="8x0e+8x1o",
-        n_layers=2,
-        radial_basis_size=4,
-        radial_mlp_size=8,
-        radial_mlp_layers=2,
-        kernel=False,
-    )
-
-    model_kernel = Nequix(
-        key,
-        n_species=2,
-        lmax=1,
-        hidden_irreps="8x0e+8x1o",
-        n_layers=2,
-        radial_basis_size=4,
-        radial_mlp_size=8,
-        radial_mlp_layers=2,
-        kernel=True,
-    )
-
-    batch = dummy_graph()
-    batch_padded = jraph.pad_with_graphs(batch, n_node=4, n_edge=4, n_graph=2)
-
-    energy_no_kernel, forces_no_kernel, stress_no_kernel = model_no_kernel(batch_padded)
-    energy_kernel, forces_kernel, stress_kernel = model_kernel(batch_padded)
-
-    # Both should produce valid outputs with same shapes
-    assert energy_kernel.shape == energy_no_kernel.shape
-    assert forces_kernel.shape == forces_no_kernel.shape
-    assert stress_kernel.shape == stress_no_kernel.shape
-
-    # Outputs should be finite
-    assert np.all(np.isfinite(energy_kernel))
-    assert np.all(np.isfinite(forces_kernel))
-    assert np.all(np.isfinite(stress_kernel))
-
-    # Outputs should be numerically equivalent
-    np.testing.assert_allclose(energy_kernel, energy_no_kernel, rtol=1e-7, atol=1e-7)
-    np.testing.assert_allclose(forces_kernel, forces_no_kernel, rtol=1e-7, atol=1e-7)
-    np.testing.assert_allclose(stress_kernel, stress_no_kernel, rtol=1e-7, atol=1e-7)
-
-    # Test JIT compilation works
-    energy_jit, forces_jit, stress_jit = eqx.filter_jit(model_kernel)(batch_padded)
-    np.testing.assert_allclose(energy_jit, energy_no_kernel, rtol=1e-7, atol=1e-7)
