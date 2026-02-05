@@ -13,8 +13,6 @@ from nequix.data import (
     dict_to_pytorch_geometric,
     preprocess_graph,
 )
-
-
 from nequix.model import load_model as load_model_jax
 from nequix.model import save_model as save_model_jax
 
@@ -201,10 +199,10 @@ class NequixCalculator(Calculator):
             )
 
         # take energy and forces without padding
-        energy = np.array(energy[0])
+        energy = energy[0].numpy()
         self.results["energy"] = energy
         self.results["free_energy"] = energy
-        self.results["forces"] = np.array(forces)
+        self.results["forces"] = forces.numpy()
         self.results["stress"] = (
-            full_3x3_to_voigt_6_stress(np.array(stress[0])) if stress is not None else None
+            full_3x3_to_voigt_6_stress(stress[0].numpy()) if stress is not None else None
         )
