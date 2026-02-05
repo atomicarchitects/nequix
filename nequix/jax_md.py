@@ -77,8 +77,12 @@ def nequix_neighbor_list(
           For forces, use ``-jax.grad(energy_fn)(position, neighbor)``.
           For stress, use ``quantity.stress(energy_fn, position, box, neighbor=neighbor)``.
         """
+        n_atoms = position.shape[0]
         graph = featurizer(species, position, neighbor, **kwargs)
-        node_energies = model.node_energies(graph.edges, species, graph.senders, graph.receivers)
-        return jnp.sum(node_energies)
+        species_padded = jnp.concatenate([species, jnp.zeros(1, dtype=species.dtype)])
+        node_energies = model.node_energies(
+            graph.edges, species_padded, graph.senders, graph.receivers
+        )
+        return jnp.sum(node_energies[:n_atoms])
 
     return neighbor_fn, energy_fn
