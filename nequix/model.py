@@ -1,6 +1,6 @@
 import json
 import math
-from typing import Callable, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 import e3nn_jax as e3nn
 import equinox as eqx
@@ -132,7 +132,7 @@ class NequixConvolution(eqx.Module):
     skip: e3nn.equinox.Linear
     layer_norm: Optional[RMSLayerNorm]
     sort: Sort
-    tp_conv: Optional[oeq.jax.TensorProductConv] = None
+    tp_conv: Optional[Any] = None
 
     def __init__(
         self,
@@ -156,21 +156,22 @@ class NequixConvolution(eqx.Module):
         self.kernel = kernel
 
         irreps_out_tp = []
-        instructions = []
+        instructions = [] if kernel else None
         for i, (mul, ir_in1) in enumerate(input_irreps):
             for j, (_, ir_in2) in enumerate(sh_irreps):
                 for ir_out in ir_in1 * ir_in2:
                     if ir_out in output_irreps or ir_out == e3nn.Irrep("0e"):
                         k = len(irreps_out_tp)
                         irreps_out_tp.append((mul, ir_out))
-                        instructions.append((i, j, k, "uvu", True))
+                        if kernel:
+                            instructions.append((i, j, k, "uvu", True))
 
         tp_irreps = e3nn.Irreps(irreps_out_tp)
         _, _, inv = tp_irreps.sort()
-        instructions = [instructions[i] for i in inv]
         self.tp_irreps = tp_irreps
 
         if kernel:
+            instructions = [instructions[i] for i in inv]
             if not OEQ_AVAILABLE:
                 raise ImportError(
                     "OpenEquivariance with JAX support is required for kernel=True. "
