@@ -156,15 +156,14 @@ class NequixConvolution(eqx.Module):
         self.kernel = kernel
 
         irreps_out_tp = []
-        instructions = [] if kernel else None
+        instructions = []
         for i, (mul, ir_in1) in enumerate(input_irreps):
             for j, (_, ir_in2) in enumerate(sh_irreps):
                 for ir_out in ir_in1 * ir_in2:
-                    if ir_out in output_irreps or ir_out == e3nn.Irrep("0e"):
+                    if ir_out in output_irreps:
                         k = len(irreps_out_tp)
                         irreps_out_tp.append((mul, ir_out))
-                        if kernel:
-                            instructions.append((i, j, k, "uvu", True))
+                        instructions.append((i, j, k, "uvu", True))
 
         tp_irreps = e3nn.Irreps(irreps_out_tp)
         _, _, inv = tp_irreps.sort()
