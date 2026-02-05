@@ -1,3 +1,4 @@
+import os
 import json
 import math
 from typing import Any, Callable, Optional, Sequence
@@ -11,6 +12,7 @@ import jraph
 from nequix.layer_norm import RMSLayerNorm
 
 try:
+    os.environ["OEQ_NOTORCH"] = "1"
     import openequivariance as oeq
     import openequivariance_extjax  # noqa: F401
 
@@ -125,6 +127,7 @@ class NequixConvolution(eqx.Module):
     index_weights: bool = eqx.field(static=True)
     avg_n_neighbors: float = eqx.field(static=True)
     kernel: bool = eqx.field(static=True)
+    tp_conv: Optional[Any] = eqx.field(static=True)
 
     radial_mlp: MLP
     linear_1: e3nn.equinox.Linear
@@ -132,7 +135,6 @@ class NequixConvolution(eqx.Module):
     skip: e3nn.equinox.Linear
     layer_norm: Optional[RMSLayerNorm]
     sort: Sort
-    tp_conv: Optional[Any] = None
 
     def __init__(
         self,
