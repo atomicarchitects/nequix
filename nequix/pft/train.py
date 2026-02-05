@@ -192,7 +192,7 @@ def train(config_path):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    model, original_config = load_model(config["finetune_from"])
+    model, original_config = load_model(config["finetune_from"], config["kernel"])
 
     if config["optimizer"] == "muon":
         optim = optax.chain(
