@@ -12,6 +12,7 @@ import jraph
 from nequix.layer_norm import RMSLayerNorm
 
 try:
+    # allow openequivariance to be imported without torch
     os.environ["OEQ_NOTORCH"] = "1"
     import openequivariance as oeq
     import openequivariance_extjax  # noqa: F401
