@@ -262,6 +262,7 @@ def train(config_path: str):
         scale=stats["scale"],
         avg_n_neighbors=stats["avg_n_neighbors"],
         atom_energies=atom_energies,
+        kernel=config["kernel"],
     )
     if "finetune_from" in config and Path(config["finetune_from"]).exists():
         if "atom_energies" in config:

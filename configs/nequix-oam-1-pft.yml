@@ -48,3 +48,4 @@ hessian_weight: 100.0
 val_every: 5
 log_every: 100
 ema_decay: 0.999
+kernel: true

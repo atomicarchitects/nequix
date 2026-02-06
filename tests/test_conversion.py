@@ -22,7 +22,7 @@ def test_conversion():
 
     torch_model_loaded, torch_config_loaded = load_model_torch(tmp_file_torch.name)
     jax_model_converted, jax_config_converted = convert_model_torch_to_jax(
-        torch_model_loaded, torch_config_loaded
+        torch_model_loaded, torch_config_loaded, use_kernel=False
     )
 
     tmp_file_jax = tempfile.NamedTemporaryFile(suffix=".nqx", delete=False)

@@ -131,7 +131,7 @@ def convert_layer_torch_to_jax(layer_idx, torch_model, jax_model):
     return jax_model
 
 
-def convert_model_torch_to_jax(torch_model, config):
+def convert_model_torch_to_jax(torch_model, config, use_kernel):
     jax_model = Nequix(
         key=jax.random.key(0),
         n_species=len(config["atomic_numbers"]),
@@ -150,6 +150,7 @@ def convert_model_torch_to_jax(torch_model, config):
         scale=config["scale"],
         avg_n_neighbors=config["avg_n_neighbors"],
         atom_energies=[config["atom_energies"][str(n)] for n in config["atomic_numbers"]],
+        kernel=use_kernel,
     )
     for layer_idx in range(len(torch_model.layers)):
         jax_model = convert_layer_torch_to_jax(layer_idx, torch_model, jax_model)
