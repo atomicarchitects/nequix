@@ -79,6 +79,7 @@ def nequix_neighbor_list(
         """
         n_atoms = position.shape[0]
         graph = featurizer(species, position, neighbor, **kwargs)
+        # pad species with one extra node so padded edges are not out of bounds
         species_padded = jnp.concatenate([species, jnp.zeros(1, dtype=species.dtype)])
         node_energies = model.node_energies(
             graph.edges, species_padded, graph.senders, graph.receivers
