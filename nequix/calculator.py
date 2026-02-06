@@ -75,7 +75,7 @@ class NequixCalculator(Calculator):
         path_backend = "jax" if model_path.suffix == ".nqx" else "torch"
         if path_backend == backend:
             if backend == "jax":
-                self.model, self.config = load_model_jax(model_path)
+                self.model, self.config = load_model_jax(model_path, use_kernel)
             else:
                 from nequix.torch.model import load_model as load_model_torch
 
@@ -87,13 +87,13 @@ class NequixCalculator(Calculator):
 
                 torch_model, torch_config = load_model_torch(model_path, use_kernel)
                 print("Converting PyTorch model to JAX ...")
-                self.model, self.config = convert_model_torch_to_jax(torch_model, torch_config)
+                self.model, self.config = convert_model_torch_to_jax(torch_model, torch_config, use_kernel)
                 out_path = model_path.parent / f"{model_name}.nqx"
                 save_model_jax(out_path, self.model, self.config)
             else:
                 from nequix.torch.utils import convert_model_jax_to_torch
 
-                jax_model, jax_config = load_model_jax(model_path)
+                jax_model, jax_config = load_model_jax(model_path, use_kernel)
                 print("Converting JAX model to PyTorch ...")
                 self.model, self.config = convert_model_jax_to_torch(
                     jax_model, jax_config, use_kernel

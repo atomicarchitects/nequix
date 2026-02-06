@@ -27,7 +27,7 @@ def main():
         save_model_torch(output_path, torch_model, torch_config)
     elif input_backend == "torch" and output_backend == "jax":
         torch_model, torch_config = load_model_torch(input_path)
-        jax_model, jax_config = convert_model_torch_to_jax(torch_model, torch_config)
+        jax_model, jax_config = convert_model_torch_to_jax(torch_model, torch_config, use_kernel=False)
         save_model_jax(output_path, jax_model, jax_config)
     else:
         raise ValueError(f"invalid input and output backends: {input_backend} and {output_backend}")
