@@ -2454,8 +2454,8 @@ wheels = [
 
 [[package]]
 name = "openequivariance"
-version = "0.5.4.dev2+g3dda80cb4"
-source = { git = "https://github.com/PASSIONLab/OpenEquivariance.git?subdirectory=openequivariance#3dda80cb448f666f00bbc2aef5a97cf7dead98c2" }
+version = "0.5.4.dev3+g72122ceb1"
+source = { git = "https://github.com/PASSIONLab/OpenEquivariance.git?subdirectory=openequivariance#72122ceb1062b333000f33017ce96f120ba4f955" }
 dependencies = [
     { name = "jinja2" },
     { name = "ninja" },
