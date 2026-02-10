@@ -1,6 +1,6 @@
-import os
 import json
 import math
+import os
 from typing import Any, Callable, Optional, Sequence
 
 import e3nn_jax as e3nn
@@ -12,8 +12,14 @@ import jraph
 from nequix.layer_norm import RMSLayerNorm
 
 try:
-    # allow openequivariance to be imported without torch
+    import torch  # noqa: F401
+except ImportError:
+    # allow openequivariance to be imported without torch, but only if it is not
+    # installed; otherwise, the torch backend won't work if users want to use
+    # both torch and jax.
     os.environ["OEQ_NOTORCH"] = "1"
+
+try:
     import openequivariance as oeq
     import openequivariance_extjax  # noqa: F401
 
