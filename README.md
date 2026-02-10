@@ -45,7 +45,7 @@ atoms = ...
 atoms.calc = NequixCalculator("nequix-mp-1", backend="jax")
 ```
 
-or if you want to use the faster torch backend:
+or if you want to use the torch backend:
 
 ```python
 ...
