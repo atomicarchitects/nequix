@@ -45,7 +45,7 @@ class NequixCalculator(Calculator):
         model_path: str = None,
         capacity_multiplier: float = 1.1,  # Only for jax backend
         backend: str = "jax",
-        use_kernel: bool = True,  # Only for torch backend
+        use_kernel: bool = True,
         use_compile: bool = True,  # Only for torch backend
         **kwargs,
     ):
@@ -87,7 +87,9 @@ class NequixCalculator(Calculator):
 
                 torch_model, torch_config = load_model_torch(model_path, use_kernel)
                 print("Converting PyTorch model to JAX ...")
-                self.model, self.config = convert_model_torch_to_jax(torch_model, torch_config, use_kernel)
+                self.model, self.config = convert_model_torch_to_jax(
+                    torch_model, torch_config, use_kernel
+                )
                 out_path = model_path.parent / f"{model_name}.nqx"
                 save_model_jax(out_path, self.model, self.config)
             else:

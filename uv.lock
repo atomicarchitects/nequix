@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.13' and sys_platform == 'linux'",
@@ -2161,8 +2161,8 @@ requires-dist = [
     { name = "jax", extras = ["cuda12"], marker = "sys_platform == 'linux'", specifier = ">=0.4.34" },
     { name = "jraph", specifier = ">=0.0.6.dev0" },
     { name = "matscipy", specifier = ">=1.1.1" },
-    { name = "openequivariance", marker = "extra == 'torch'", git = "https://github.com/PASSIONLab/OpenEquivariance.git?subdirectory=openequivariance" },
-    { name = "openequivariance", extras = ["jax"], marker = "extra == 'oeq'", git = "https://github.com/PASSIONLab/OpenEquivariance.git?subdirectory=openequivariance" },
+    { name = "openequivariance", marker = "extra == 'torch'", specifier = ">=0.5.4" },
+    { name = "openequivariance", extras = ["jax"], marker = "extra == 'oeq'", specifier = ">=0.5.4" },
     { name = "optax", specifier = ">=0.2.5" },
     { name = "phonopy", marker = "extra == 'pft'", specifier = ">=2.43.1" },
     { name = "pyyaml", specifier = ">=6.0.2" },
@@ -2454,14 +2454,15 @@ wheels = [
 
 [[package]]
 name = "openequivariance"
-version = "0.5.4.dev3+g72122ceb1"
-source = { git = "https://github.com/PASSIONLab/OpenEquivariance.git?subdirectory=openequivariance#72122ceb1062b333000f33017ce96f120ba4f955" }
+version = "0.5.4"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
     { name = "ninja" },
     { name = "numpy" },
     { name = "setuptools" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/ab/29/1e76c9e8bd02ca4f8c7f67a31bdb09fe1960a99d9fc63e3bfedc9725f7ea/openequivariance-0.5.4.tar.gz", hash = "sha256:4454524d2acee2c4a255ba492a1fb7160be8e4631c955401ad22d86c63812110", size = 105102, upload-time = "2026-02-10T03:54:25.485Z" }
 
 [package.optional-dependencies]
 jax = [
