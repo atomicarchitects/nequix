@@ -128,7 +128,7 @@ uv sync --extra pft
 
 We provide pretrained model weights for the co-trained (better alignment with
 MPtrj) and non co-trained models in `models/nequix-mp-1-pft.nqx` and
-`nequix-mp-1-pft-nocotrain.nqx` respectively. See [nequix-examples](https://github.com/teddykoker/nequix-examples) for
+`nequix-mp-1-pft-nocotrain.nqx` respectively. See [nequix-examples/phonon](https://github.com/teddykoker/nequix-examples/blob/main/phonon) for
 examples on how to use these models for phonon calculations with both finite
 displacement, and analytical Hessians.
 
@@ -168,7 +168,7 @@ To run PFT on the OAM base model, follow the data download instructions below an
 uv run nequix/pft/train.py configs/nequix-oam-1-pft.yml
 ```
 
-Both PFT training runs take about 140 hours on a single A100.
+Both PFT training runs take about 140 hours on a single A100. Note that PFT training is only currently only supported with the JAX backend, which is both significantly faster and supported by the kernels. See [nequix-examples/pft](https://github.com/teddykoker/nequix-examples/blob/main/pft), which contains a small demo for PFT in PyTorch that can be adapted to other models. Feel free to reach out with questions.
 
 ## Training OMat/OAM base models
 
