@@ -4,7 +4,7 @@ import torch
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from nequix.torch.model import NequixTorch
+from nequix.torch_impl.model import NequixTorch
 from nequix.model import Nequix
 
 

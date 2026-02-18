@@ -8,7 +8,7 @@ import torch
 from e3nn import o3
 from e3nn.util.jit import compile_mode
 
-from nequix.torch.layer_norm import RMSLayerNorm
+from nequix.torch_impl.layer_norm import RMSLayerNorm
 
 
 def _broadcast(src: torch.Tensor, other: torch.Tensor, dim: int):
