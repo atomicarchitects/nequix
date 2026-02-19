@@ -3,10 +3,10 @@ from pathlib import Path
 
 from nequix.model import load_model as load_model_jax
 from nequix.model import save_model as save_model_jax
-from nequix.torch.model import load_model as load_model_torch
-from nequix.torch.model import save_model as save_model_torch
-from nequix.torch.utils import convert_model_jax_to_torch
-from nequix.torch.utils import convert_model_torch_to_jax
+from nequix.torch_impl.model import load_model as load_model_torch
+from nequix.torch_impl.model import save_model as save_model_torch
+from nequix.torch_impl.utils import convert_model_jax_to_torch
+from nequix.torch_impl.utils import convert_model_torch_to_jax
 
 
 def main():

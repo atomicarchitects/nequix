@@ -5,11 +5,11 @@ import torch
 
 from nequix.model import load_model as load_model_jax
 from nequix.model import save_model as save_model_jax
-from nequix.torch.model import load_model as load_model_torch
-from nequix.torch.model import save_model as save_model_torch
-from nequix.torch.utils import convert_model_jax_to_torch, convert_model_torch_to_jax
+from nequix.torch_impl.model import load_model as load_model_torch
+from nequix.torch_impl.model import save_model as save_model_torch
+from nequix.torch_impl.utils import convert_model_jax_to_torch, convert_model_torch_to_jax
 from tests.test_model import dummy_graph as dummy_graph_jax
-from tests.torch_tests.test_model_torch import dummy_graph as dummy_graph_torch
+from tests.torch_impl.test_model_torch import dummy_graph as dummy_graph_torch
 
 
 def test_conversion():

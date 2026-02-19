@@ -77,13 +77,13 @@ class NequixCalculator(Calculator):
             if backend == "jax":
                 self.model, self.config = load_model_jax(model_path, use_kernel)
             else:
-                from nequix.torch.model import load_model as load_model_torch
+                from nequix.torch_impl.model import load_model as load_model_torch
 
                 self.model, self.config = load_model_torch(model_path, use_kernel)
         else:
             # Convert and save
             if path_backend == "torch":
-                from nequix.torch.utils import convert_model_torch_to_jax
+                from nequix.torch_impl.utils import convert_model_torch_to_jax
 
                 torch_model, torch_config = load_model_torch(model_path, use_kernel)
                 print("Converting PyTorch model to JAX ...")
@@ -93,7 +93,7 @@ class NequixCalculator(Calculator):
                 out_path = model_path.parent / f"{model_name}.nqx"
                 save_model_jax(out_path, self.model, self.config)
             else:
-                from nequix.torch.utils import convert_model_jax_to_torch
+                from nequix.torch_impl.utils import convert_model_jax_to_torch
 
                 jax_model, jax_config = load_model_jax(model_path, use_kernel)
                 print("Converting JAX model to PyTorch ...")
@@ -101,7 +101,7 @@ class NequixCalculator(Calculator):
                     jax_model, jax_config, use_kernel
                 )
                 out_path = model_path.parent / f"{model_name}.pt"
-                from nequix.torch.model import save_model as save_model_torch
+                from nequix.torch_impl.model import save_model as save_model_torch
 
                 save_model_torch(out_path, self.model, self.config)
             print("Model saved to ", out_path)
@@ -193,7 +193,7 @@ class NequixCalculator(Calculator):
             )
 
             # scatter is outside of the model to avoid compile issues
-            from nequix.torch.model import scatter
+            from nequix.torch_impl.model import scatter
 
             energy = scatter(energy_per_atom, graph.n_graph, dim=0, dim_size=graph.n_node.size(0))
             energy, forces, stress = (

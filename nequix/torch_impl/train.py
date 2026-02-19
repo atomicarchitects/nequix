@@ -15,14 +15,14 @@ from wandb_osh.hooks import TriggerWandbSyncHook
 
 import wandb
 from nequix.data import AseDBDataset, ConcatDataset
-from nequix.torch.model import (
+from nequix.torch_impl.model import (
     NequixTorch,
     get_optimizer_param_groups,
     load_model,
     save_model,
     scatter,
 )
-from nequix.torch.utils import StatefulDistributedSampler
+from nequix.torch_impl.utils import StatefulDistributedSampler
 
 
 def loss(model, batch, energy_weight, force_weight, stress_weight, loss_type="huber", device="cpu"):
@@ -406,7 +406,7 @@ def train(config_path: str):
                 "weight_decay": 0.0,
             },
         ]
-        from nequix.torch.muon import SingleDeviceMuonWithAuxAdam
+        from nequix.torch_impl.muon import SingleDeviceMuonWithAuxAdam
 
         optimizer = SingleDeviceMuonWithAuxAdam(param_groups)
     else:

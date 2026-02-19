@@ -78,9 +78,9 @@ or for Torch
 ```bash
 # Single GPU
 uv sync --extra torch
-uv run nequix/torch/train.py <config>.yml
+uv run nequix/torch_impl/train.py <config>.yml
 # Multi-GPU
-uv run torchrun --nproc_per_node=<gpus> nequix/torch/train.py <config>.yml
+uv run torchrun --nproc_per_node=<gpus> nequix/torch_impl/train.py <config>.yml
 ```
 
 To reproduce the training of Nequix-MP-1, first clone the repo and sync the environment:
@@ -189,13 +189,13 @@ ln -s <path to storage location>/mptrj-aselmdb ./data/mptrj-aselmdb
 
 To train the OMat model, run:
 ```bash
-uv run torchrun --nproc_per_node=4 nequix/torch/train.py configs/nequix-omat-1.yml
+uv run torchrun --nproc_per_node=4 nequix/torch_impl/train.py configs/nequix-omat-1.yml
 ```
 
 This takes roughly 60 hours on a 4 x A100 node. To fine-tune the OAM model, copy
 the OMat model to `models/nequix-omat-1.pt` and run
 ```bash
-uv run torchrun --nproc_per_node=4 nequix/torch/train.py configs/nequix-oam-1.yml
+uv run torchrun --nproc_per_node=4 nequix/torch_impl/train.py configs/nequix-oam-1.yml
 ```
 This takes roughly 10 hours on a 4 x A100 node.
 
