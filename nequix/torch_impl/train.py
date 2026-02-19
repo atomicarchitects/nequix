@@ -23,6 +23,7 @@ from nequix.torch_impl.model import (
     scatter,
 )
 from nequix.torch_impl.utils import StatefulDistributedSampler
+from nequix.torch_impl.muon import SingleDeviceMuonWithAuxAdam, get_muon_param_groups
 
 
 def loss(model, batch, energy_weight, force_weight, stress_weight, loss_type="huber", device="cpu"):
@@ -348,53 +349,7 @@ def train(config_path: str):
     warmup_steps = config["warmup_epochs"] * steps_per_epoch
 
     if config["optimizer"] == "muon":
-        # TODO: should probably refactor this into get_muon_param_groups() function
-        weights_2d = [p for p in model.parameters() if p.ndim >= 2]
-        weights_layer_norm = []
-        weights_e3nn_linear = []
-        slices_e3nn_linear = []
-        for layer in model.layers:
-            weights_layer_norm.extend([weight for weight in layer.layer_norm.affine_weight])
-            if layer.layer_norm.affine_bias is not None:
-                weights_layer_norm.extend([weight for weight in layer.layer_norm.affine_bias])
-            weights_e3nn_linear.extend(
-                [layer.linear_1.weight, layer.linear_2.weight, layer.skip.weight]
-            )
-            slices_e3nn_linear.extend(
-                [
-                    layer.linear_1.weight_index_slices,
-                    layer.linear_2.weight_index_slices,
-                    layer.skip.weight_index_slices,
-                ]
-            )
-        weights_e3nn_linear.extend([model.readout.weight])
-        slices_e3nn_linear.extend([model.readout.weight_index_slices])
-
-        param_groups = [
-            # Pass in additional slicing metadata. For each linear weight we have a list of irreps that slice it.
-            {
-                "params": weights_e3nn_linear,
-                "slices_e3nn_linear": slices_e3nn_linear,
-                "use_muon": True,
-                "lr": config["learning_rate"],
-                "weight_decay": config["weight_decay"],
-            },
-            {
-                "params": weights_2d,
-                "use_muon": True,
-                "lr": config["learning_rate"],
-                "weight_decay": config["weight_decay"],
-            },
-            # LayerNorm should use AdamW optimizer
-            {
-                "params": weights_layer_norm,
-                "use_muon": False,
-                "lr": config["learning_rate"],
-                "weight_decay": 0.0,
-            },
-        ]
-        from nequix.torch_impl.muon import SingleDeviceMuonWithAuxAdam
-
+        param_groups = get_muon_param_groups(model, config["learning_rate"], config["weight_decay"])
         optimizer = SingleDeviceMuonWithAuxAdam(param_groups)
     else:
         param_groups = get_optimizer_param_groups(model, config["weight_decay"])
