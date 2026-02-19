@@ -278,27 +278,10 @@ def train(config_path: str):
             shuffle=True,
             seed=42,
         )
-        val_sampler = StatefulDistributedSampler(
-            val_dataset,
-            batch_size=config["batch_size"],
-            num_replicas=world_size,
-            rank=rank,
-            shuffle=False,
-            seed=42,
-        )
-
-        # Note: We assume 16 cores per task
         train_loader = DataLoader(
             train_dataset,
             batch_size=config["batch_size"],
             sampler=train_sampler,
-            num_workers=16,
-            pin_memory=True,
-        )
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=config["batch_size"],
-            sampler=val_sampler,
             num_workers=16,
             pin_memory=True,
         )
@@ -310,13 +293,14 @@ def train(config_path: str):
             num_workers=16,
             pin_memory=True,
         )
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=config["batch_size"],
-            shuffle=False,
-            num_workers=16,
-            pin_memory=True,
-        )
+
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config["batch_size"],
+        shuffle=False,
+        num_workers=16,
+        pin_memory=True,
+    )
 
     # Set the seeds
     torch.manual_seed(42)
@@ -364,6 +348,7 @@ def train(config_path: str):
     warmup_steps = config["warmup_epochs"] * steps_per_epoch
 
     if config["optimizer"] == "muon":
+        # TODO: should probably refactor this into get_muon_param_groups() function
         weights_2d = [p for p in model.parameters() if p.ndim >= 2]
         weights_layer_norm = []
         weights_e3nn_linear = []
@@ -382,6 +367,8 @@ def train(config_path: str):
                     layer.skip.weight_index_slices,
                 ]
             )
+        weights_e3nn_linear.extend([model.readout.weight])
+        slices_e3nn_linear.extend([model.readout.weight_index_slices])
 
         param_groups = [
             # Pass in additional slicing metadata. For each linear weight we have a list of irreps that slice it.
@@ -540,35 +527,34 @@ def train(config_path: str):
             train_time = time.time() - start_time
             global_step += 1
 
-            if global_step % config["log_every"] == 0 and rank == 0:
-                logs = {}
-                logs["train/loss"] = total_loss.item()
-                logs["learning_rate"] = scheduler.get_last_lr()[0]
-                logs["train/batch_time"] = batch_time
-                logs["train/train_time"] = train_time
-                for key, value in metrics.items():
-                    logs[f"train/{key}"] = value.item()
-                logs["train/batch_size"] = batch.num_graphs if hasattr(batch, "num_graphs") else 1
-                wandb.log(logs, step=global_step)
-                print(f"step: {global_step}, logs: {logs}")
-                wandb_sync()
+            if global_step % config["log_every"] == 0:
+                if is_distributed:
+                    # take mean of loss and metrics across ranks
+                    with torch.no_grad():
+                        total_loss = total_loss.detach()
+                        torch.distributed.all_reduce(total_loss, op=torch.distributed.ReduceOp.AVG)
+                        for k, v in metrics.items():
+                            v = v.detach()
+                            torch.distributed.all_reduce(v, op=torch.distributed.ReduceOp.AVG)
+                            metrics[k] = v
 
-                save_training_state(
-                    Path(wandb.run.dir) / "state.pkl",
-                    model,
-                    ema_model,
-                    optimizer,
-                    scheduler,
-                    global_step,
-                    steps_through_epoch,
-                    epoch,
-                    best_val_loss,
-                    wandb_run_id=wandb_run_id,
-                )
+                if rank == 0:
+                    logs = {}
+                    logs["train/loss"] = total_loss.item()
+                    logs["learning_rate"] = scheduler.get_last_lr()[0]
+                    logs["train/batch_time"] = batch_time
+                    logs["train/train_time"] = train_time
+                    for key, value in metrics.items():
+                        logs[f"train/{key}"] = value.item()
+                    logs["train/batch_size"] = (
+                        batch.num_graphs if hasattr(batch, "num_graphs") else 1
+                    )
+                    wandb.log(logs, step=global_step)
+                    print(f"step: {global_step}, logs: {logs}")
+                    wandb_sync()
 
-                if "state_path" in config:
                     save_training_state(
-                        config["state_path"],
+                        Path(wandb.run.dir) / "state.pkl",
                         model,
                         ema_model,
                         optimizer,
@@ -579,6 +565,20 @@ def train(config_path: str):
                         best_val_loss,
                         wandb_run_id=wandb_run_id,
                     )
+
+                    if "state_path" in config:
+                        save_training_state(
+                            config["state_path"],
+                            model,
+                            ema_model,
+                            optimizer,
+                            scheduler,
+                            global_step,
+                            steps_through_epoch,
+                            epoch,
+                            best_val_loss,
+                            wandb_run_id=wandb_run_id,
+                        )
 
             start_time = time.time()
 

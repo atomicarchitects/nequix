@@ -8,7 +8,8 @@ from nequix.torch_impl.model import NequixTorch
 from nequix.model import Nequix
 
 
-# copied from https://github.com/facebookresearch/vissl/blob/09270ed25a6c2cf71263d955b64cbe076d34ac45/vissl/data/data_helper.py#L93
+# based on https://github.com/facebookresearch/vissl/blob/09270ed25a6c2cf71263d955b64cbe076d34ac45/vissl/data/data_helper.py#L93
+# but with a different shuffling strategy
 class StatefulDistributedSampler(DistributedSampler):
     """
     More fine-grained state DataSampler that uses training iteration and epoch
@@ -37,13 +38,12 @@ class StatefulDistributedSampler(DistributedSampler):
         self.num_samples = self.total_size // self.num_replicas
 
     def __iter__(self):
-        # partition data into num_replicas and optionally shuffle within a rank
+        # shuffle the full dataset first, then partition the shuffled indices
         g = torch.Generator()
         g.manual_seed(self.epoch + self.seed)
-        shuffling = torch.randperm(self.num_samples, generator=g).tolist()
-        indices = np.array(
-            list(range((self.rank * self.num_samples), (self.rank + 1) * self.num_samples))
-        )[shuffling].tolist()
+        full_shuffle = torch.randperm(self.total_size, generator=g)
+        # rank r gets indices at positions r, r+num_replicas, r+2*num_replicas, ...
+        indices = full_shuffle[self.rank :: self.num_replicas].tolist()
 
         # make sure we have correct number of samples per replica
         assert len(indices) == self.num_samples
