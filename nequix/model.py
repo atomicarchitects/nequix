@@ -375,8 +375,6 @@ class Nequix(eqx.Module):
         species: jax.Array,
         senders: jax.Array,
         receivers: jax.Array,
-        alchemical_group: Optional[jax.Array] = None,
-        alchemical_lambda: Optional[float] = None,
     ):
         # input features are one-hot encoded species
         features = e3nn.IrrepsArray(
@@ -387,21 +385,13 @@ class Nequix(eqx.Module):
         square_r_norm = jnp.sum(displacements**2, axis=-1)
         r_norm = jnp.where(square_r_norm == 0.0, 0.0, jnp.sqrt(square_r_norm))
 
-        cutoffs =  polynomial_cutoff(
-            r_norm,
-            self.cutoff,
-            self.radial_polynomial_p,
-        )
-
-        # Scale cutoffs for cross-group alchemical interactions.
-        if alchemical_group is not None:
-            same_alchemical_group = (alchemical_group[senders] == alchemical_group[receivers])
-            cutoff_scale = (1 - jnp.cos(jnp.pi * alchemical_lambda)) / 2
-            cutoffs = jnp.where(same_alchemical_group, cutoffs, cutoff_scale * cutoffs)
-
         radial_basis = (
             bessel_basis(r_norm, self.radial_basis_size, self.cutoff)
-            * cutoffs[:, None]
+            * polynomial_cutoff(
+                r_norm,
+                self.cutoff,
+                self.radial_polynomial_p,
+            )[:, None]
         )
 
         # compute spherical harmonics of edge displacements
