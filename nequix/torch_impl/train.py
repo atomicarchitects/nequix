@@ -542,6 +542,7 @@ def train(config_path: str):
         checkpoint_steps_through_epoch = 0
 
         if is_distributed:
+            # wait for all ranks to finish training
             torch.distributed.barrier()
 
         if rank == 0:
@@ -570,6 +571,7 @@ def train(config_path: str):
             wandb_sync()
 
         if is_distributed:
+            # wait for validation to finish
             torch.distributed.barrier()
 
     if is_distributed and epoch == config["n_epochs"] - 1:
