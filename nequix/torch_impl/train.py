@@ -541,6 +541,10 @@ def train(config_path: str):
         train_loader.sampler.set_start_iter(0)
         checkpoint_steps_through_epoch = 0
 
+        if is_distributed:
+            # wait for all ranks to finish training
+            torch.distributed.barrier()
+
         if rank == 0:
             val_metrics = evaluate(
                 ema_model,
@@ -565,6 +569,10 @@ def train(config_path: str):
                 wandb.log(logs, step=global_step)
             print(f"epoch: {epoch}, logs: {logs}")
             wandb_sync()
+
+        if is_distributed:
+            # wait for validation to finish
+            torch.distributed.barrier()
 
     if is_distributed and epoch == config["n_epochs"] - 1:
         cleanup_ddp()
