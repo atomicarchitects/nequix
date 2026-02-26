@@ -19,7 +19,15 @@ Model | Dataset | Theory | Reference
 pip install nequix
 ```
 
-or for torch
+to use [OpenEquivariance](https://github.com/PASSIONLab/OpenEquivariance) kernels,
+
+```bash
+pip install nequix[oeq]
+# needs to be run after installation:
+uv pip install openequivariance_extjax --no-build-isolation
+```
+
+or for torch (also with kernels):
 
 ```bash
 pip install nequix[torch]
@@ -37,13 +45,15 @@ atoms = ...
 atoms.calc = NequixCalculator("nequix-mp-1", backend="jax")
 ```
 
-or if you want to use the faster PyTorch + kernels backend
+or if you want to use the torch backend:
 
 ```python
 ...
 atoms.calc = NequixCalculator("nequix-mp-1", backend="torch")
 ...
 ```
+
+These are typically comparable in speed with kernels.
 
 #### NequixCalculator
 
@@ -53,7 +63,7 @@ Arguments
 - `backend` ({"jax", "torch"}, default "jax"): Compute backend.
 - `capacity_multiplier` (float, default 1.1): JAX-only; padding factor to limit recompiles.
 - `use_compile` (bool, default True): Torch-only; on GPU, uses `torch.compile()`.
-- `use_kernel` (bool, default True): Torch-only; on GPU, use [OpenEquivariance](https://github.com/PASSIONLab/OpenEquivariance) kernels.
+- `use_kernel` (bool, default True): on GPU, use [OpenEquivariance](https://github.com/PASSIONLab/OpenEquivariance) kernels.
 
 ### Training
 
@@ -68,9 +78,9 @@ or for Torch
 ```bash
 # Single GPU
 uv sync --extra torch
-uv run nequix/torch/train.py <config>.yml
+uv run nequix/torch_impl/train.py <config>.yml
 # Multi-GPU
-uv run torchrun --nproc_per_node=<gpus> nequix/torch/train.py <config>.yml
+uv run torchrun --nproc_per_node=<gpus> nequix/torch_impl/train.py <config>.yml
 ```
 
 To reproduce the training of Nequix-MP-1, first clone the repo and sync the environment:
@@ -100,7 +110,7 @@ Then start the training run:
 nequix_train configs/nequix-mp-1.yml
 ```
 
-This will take less than 125 hours on a single 4 x A100 node (<25 hours using the torch + kernels backend). The `batch_size` in the
+This will take less than 125 hours on a single 4 x A100 node (<25 hours with kernels). The `batch_size` in the
 config is per-device, so you should be able to run this on any number of GPUs
 (although hyperparameters like learning rate are often sensitive to global batch
 size, so keep in mind).
@@ -118,7 +128,7 @@ uv sync --extra pft
 
 We provide pretrained model weights for the co-trained (better alignment with
 MPtrj) and non co-trained models in `models/nequix-mp-1-pft.nqx` and
-`nequix-mp-1-pft-nocotrain.nqx` respectively. See [nequix-examples](https://github.com/teddykoker/nequix-examples) for
+`nequix-mp-1-pft-nocotrain.nqx` respectively. See [nequix-examples/phonon](https://github.com/teddykoker/nequix-examples/blob/main/phonon) for
 examples on how to use these models for phonon calculations with both finite
 displacement, and analytical Hessians.
 
@@ -158,7 +168,7 @@ To run PFT on the OAM base model, follow the data download instructions below an
 uv run nequix/pft/train.py configs/nequix-oam-1-pft.yml
 ```
 
-Both PFT training runs take about 140 hours on a single A100.
+Both PFT training runs take about 140 hours on a single A100. Note that PFT training is only currently only supported with the JAX backend, which is both significantly faster and supported by the kernels. See [nequix-examples/pft](https://github.com/teddykoker/nequix-examples/blob/main/pft), which contains a small demo for PFT in PyTorch that can be adapted to other models. Feel free to reach out with questions.
 
 ## Training OMat/OAM base models
 
@@ -179,13 +189,13 @@ ln -s <path to storage location>/mptrj-aselmdb ./data/mptrj-aselmdb
 
 To train the OMat model, run:
 ```bash
-uv run torchrun --nproc_per_node=4 nequix/torch/train.py configs/nequix-omat-1.yml
+uv run torchrun --nproc_per_node=4 nequix/torch_impl/train.py configs/nequix-omat-1.yml
 ```
 
 This takes roughly 60 hours on a 4 x A100 node. To fine-tune the OAM model, copy
 the OMat model to `models/nequix-omat-1.pt` and run
 ```bash
-uv run torchrun --nproc_per_node=4 nequix/torch/train.py configs/nequix-oam-1.yml
+uv run torchrun --nproc_per_node=4 nequix/torch_impl/train.py configs/nequix-oam-1.yml
 ```
 This takes roughly 10 hours on a 4 x A100 node.
 

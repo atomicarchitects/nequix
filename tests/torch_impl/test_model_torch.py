@@ -5,8 +5,8 @@ import torch
 import torch_geometric
 from e3nn import o3
 
-from nequix.torch.layer_norm import RMSLayerNorm
-from nequix.torch.model import (
+from nequix.torch_impl.layer_norm import RMSLayerNorm
+from nequix.torch_impl.model import (
     NequixTorch,
     get_optimizer_param_groups,
     load_model,

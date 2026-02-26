@@ -4,11 +4,12 @@ import torch
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from nequix.torch.model import NequixTorch
+from nequix.torch_impl.model import NequixTorch
 from nequix.model import Nequix
 
 
-# copied from https://github.com/facebookresearch/vissl/blob/09270ed25a6c2cf71263d955b64cbe076d34ac45/vissl/data/data_helper.py#L93
+# based on https://github.com/facebookresearch/vissl/blob/09270ed25a6c2cf71263d955b64cbe076d34ac45/vissl/data/data_helper.py#L93
+# but with a different shuffling strategy
 class StatefulDistributedSampler(DistributedSampler):
     """
     More fine-grained state DataSampler that uses training iteration and epoch
@@ -37,13 +38,12 @@ class StatefulDistributedSampler(DistributedSampler):
         self.num_samples = self.total_size // self.num_replicas
 
     def __iter__(self):
-        # partition data into num_replicas and optionally shuffle within a rank
+        # shuffle the full dataset first, then partition the shuffled indices
         g = torch.Generator()
         g.manual_seed(self.epoch + self.seed)
-        shuffling = torch.randperm(self.num_samples, generator=g).tolist()
-        indices = np.array(
-            list(range((self.rank * self.num_samples), (self.rank + 1) * self.num_samples))
-        )[shuffling].tolist()
+        full_shuffle = torch.randperm(self.total_size, generator=g)
+        # rank r gets indices at positions r, r+num_replicas, r+2*num_replicas, ...
+        indices = full_shuffle[self.rank :: self.num_replicas].tolist()
 
         # make sure we have correct number of samples per replica
         assert len(indices) == self.num_samples
@@ -131,7 +131,7 @@ def convert_layer_torch_to_jax(layer_idx, torch_model, jax_model):
     return jax_model
 
 
-def convert_model_torch_to_jax(torch_model, config):
+def convert_model_torch_to_jax(torch_model, config, use_kernel):
     jax_model = Nequix(
         key=jax.random.key(0),
         n_species=len(config["atomic_numbers"]),
@@ -150,6 +150,7 @@ def convert_model_torch_to_jax(torch_model, config):
         scale=config["scale"],
         avg_n_neighbors=config["avg_n_neighbors"],
         atom_energies=[config["atom_energies"][str(n)] for n in config["atomic_numbers"]],
+        kernel=use_kernel,
     )
     for layer_idx in range(len(torch_model.layers)):
         jax_model = convert_layer_torch_to_jax(layer_idx, torch_model, jax_model)

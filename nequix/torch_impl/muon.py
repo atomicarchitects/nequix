@@ -53,49 +53,6 @@ def muon_update(grad, momentum, beta=0.95, ns_steps=5, nesterov=True, slices_e3n
     return update
 
 
-class Muon(torch.optim.Optimizer):
-    def __init__(self, params, lr=0.02, weight_decay=0, momentum=0.95):
-        defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum)
-        assert (
-            isinstance(params, list)
-            and len(params) >= 1
-            and isinstance(params[0], torch.nn.Parameter)
-        )
-        params = sorted(params, key=lambda x: x.size(), reverse=True)
-        super().__init__(params, defaults)
-
-    @torch.no_grad()
-    def step(self, closure=None):
-        loss = None
-        if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
-
-        for group in self.param_groups:
-            params = group["params"]
-            params_pad = params + [torch.empty_like(params[-1])] * (
-                dist.get_world_size() - len(params) % dist.get_world_size()
-            )
-            for base_i in range(len(params))[:: dist.get_world_size()]:
-                if base_i + dist.get_rank() < len(params):
-                    p = params[base_i + dist.get_rank()]
-                    if p.grad is None:
-                        # continue
-                        p.grad = torch.zeros_like(p)  # Force synchronization
-                    state = self.state[p]
-                    if len(state) == 0:
-                        state["momentum_buffer"] = torch.zeros_like(p)
-                    update = muon_update(p.grad, state["momentum_buffer"], beta=group["momentum"])
-                    p.mul_(1 - group["lr"] * group["weight_decay"])
-                    p.add_(update.reshape(p.shape), alpha=-group["lr"])
-                dist.all_gather(
-                    params_pad[base_i : base_i + dist.get_world_size()],
-                    params_pad[base_i + dist.get_rank()],
-                )
-
-        return loss
-
-
 def adam_update(grad, buf1, buf2, step, betas, eps):
     buf1.lerp_(grad, 1 - betas[0])
     buf2.lerp_(grad.square(), 1 - betas[1])
@@ -210,3 +167,56 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
                     p.add_(update, alpha=-group["lr"])
 
         return loss
+
+
+# like torch_impl.model.get_optimizer_param_groups but for muon
+def get_muon_param_groups(model, learning_rate, weight_decay):
+    weights_2d = [p for p in model.parameters() if p.ndim >= 2]
+    weights_layer_norm = []
+    weights_e3nn_linear = []
+    slices_e3nn_linear = []
+    for layer in model.layers:
+        weights_layer_norm.extend([weight for weight in layer.layer_norm.affine_weight])
+        if layer.layer_norm.affine_bias is not None:
+            weights_layer_norm.extend([weight for weight in layer.layer_norm.affine_bias])
+        weights_e3nn_linear.extend(
+            [layer.linear_1.weight, layer.linear_2.weight, layer.skip.weight]
+        )
+        slices_e3nn_linear.extend(
+            [
+                layer.linear_1.weight_index_slices,
+                layer.linear_2.weight_index_slices,
+                layer.skip.weight_index_slices,
+            ]
+        )
+    weights_e3nn_linear.extend([model.readout.weight])
+    slices_e3nn_linear.extend([model.readout.weight_index_slices])
+
+    param_groups = [
+        # Pass in additional slicing metadata. For each linear weight we have a list of irreps that slice it.
+        {
+            "params": weights_e3nn_linear,
+            "slices_e3nn_linear": slices_e3nn_linear,
+            "use_muon": True,
+            "lr": learning_rate,
+            "weight_decay": weight_decay,
+        },
+        {
+            "params": weights_2d,
+            "use_muon": True,
+            "lr": learning_rate,
+            "weight_decay": weight_decay,
+        },
+        # LayerNorm should use AdamW optimizer with no weight decay
+        {
+            "params": weights_layer_norm,
+            "use_muon": False,
+            "lr": learning_rate,
+            "weight_decay": 0.0,
+        },
+    ]
+    param_ids_in_groups = {id(p) for g in param_groups for p in g["params"]}
+    param_ids_in_model = {id(p) for p in model.parameters() if p.requires_grad}
+    # make sure all model params are in param groups
+    assert param_ids_in_model == param_ids_in_groups
+    return param_groups

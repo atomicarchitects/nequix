@@ -4,6 +4,9 @@ import torch
 import ase.build
 
 from nequix.calculator import NequixCalculator
+from nequix.model import OEQ_AVAILABLE
+
+skip_no_oeq = pytest.mark.skipif(not OEQ_AVAILABLE, reason="OpenEquivariance not installed")
 
 
 def si():
@@ -117,11 +120,11 @@ def atoms(structure):
 @pytest.mark.parametrize("backend", ["jax", "torch"])
 @pytest.mark.parametrize("use_kernel", [True, False])
 def test_nequix_calculator_matches_reference(structure, atoms, model_name, backend, use_kernel):
-    if backend == "torch" and use_kernel and not torch.cuda.is_available():
-        pytest.skip("Torch kernel requires CUDA")
+    if use_kernel and not OEQ_AVAILABLE:
+        pytest.skip("OpenEquivariance not installed")
 
-    if backend == "jax" and use_kernel:
-        pytest.skip("No kernel support for JAX")
+    if use_kernel and backend == "torch" and not torch.cuda.is_available():
+        pytest.skip("Torch kernel requires CUDA")
 
     reference = REFERENCE_DATA[structure]["models"][model_name]
 
@@ -134,3 +137,24 @@ def test_nequix_calculator_matches_reference(structure, atoms, model_name, backe
     np.testing.assert_allclose(energy, reference["energy"], atol=1e-5, rtol=1e-5)
     np.testing.assert_allclose(forces, reference["forces"], atol=1e-5, rtol=1e-5)
     np.testing.assert_allclose(stress, reference["stress"], atol=1e-5, rtol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "backend, kernel",
+    [
+        ("torch", False),
+        pytest.param("torch", True, marks=skip_no_oeq),
+        ("jax", False),
+        pytest.param("jax", True, marks=skip_no_oeq),
+    ],
+)
+def test_calculator_nequix_mp_1_without_cell(backend, kernel):
+    atoms = ase.build.molecule("H2O")
+    calc = NequixCalculator(model_name="nequix-mp-1", backend=backend, use_kernel=kernel)
+    atoms.calc = calc
+
+    energy = atoms.get_potential_energy()
+    forces = atoms.get_forces()
+    assert np.isfinite(energy)
+    assert forces.shape == (len(atoms), 3)
+    assert np.all(np.isfinite(forces))

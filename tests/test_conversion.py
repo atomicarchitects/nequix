@@ -1,16 +1,15 @@
 import tempfile
 
-import torch
 import numpy as np
+import torch
 
 from nequix.model import load_model as load_model_jax
 from nequix.model import save_model as save_model_jax
-from nequix.torch.model import load_model as load_model_torch
-from nequix.torch.model import save_model as save_model_torch
-from nequix.torch.utils import convert_model_jax_to_torch
-from nequix.torch.utils import convert_model_torch_to_jax
+from nequix.torch_impl.model import load_model as load_model_torch
+from nequix.torch_impl.model import save_model as save_model_torch
+from nequix.torch_impl.utils import convert_model_jax_to_torch, convert_model_torch_to_jax
 from tests.test_model import dummy_graph as dummy_graph_jax
-from tests.torch.test_model_torch import dummy_graph as dummy_graph_torch
+from tests.torch_impl.test_model_torch import dummy_graph as dummy_graph_torch
 
 
 def test_conversion():
@@ -22,7 +21,7 @@ def test_conversion():
 
     torch_model_loaded, torch_config_loaded = load_model_torch(tmp_file_torch.name)
     jax_model_converted, jax_config_converted = convert_model_torch_to_jax(
-        torch_model_loaded, torch_config_loaded
+        torch_model_loaded, torch_config_loaded, use_kernel=False
     )
 
     tmp_file_jax = tempfile.NamedTemporaryFile(suffix=".nqx", delete=False)
