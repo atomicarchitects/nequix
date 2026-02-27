@@ -56,9 +56,6 @@ dev = [
 [tool.ruff]
 line-length = 100
 
-[tool.uv]
-environments = ["python_version >= '3.12'"]
-
 [tool.uv.sources]
 ase-db-backends = { git = "https://gitlab.com/ase/ase-db-backends.git" }
 jax-md = { git = "https://github.com/jax-md/jax-md.git" }
@@ -71,7 +68,10 @@ torch = [
   "torch-geometric>=2.6.1",
   "setuptools",
 ]
-torch-sim = ["torch-sim-atomistic>=0.5.2", "torch>=2.8.0"]
+torch-sim = [
+  "torch-sim-atomistic>=0.5.2; python_version >= '3.12'",
+  "torch>=2.8.0; python_version >= '3.12'",
+]
 oeq = [
   # You need to install openequivariance_extjax separately
   # uv pip install openequivariance_extjax --no-build-isolation
