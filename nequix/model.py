@@ -397,7 +397,7 @@ class Nequix(eqx.Module):
         if alchemical_group is not None:
             same_alchemical_group = (alchemical_group[senders] == alchemical_group[receivers])
             cutoff_scale = (1 - jnp.cos(jnp.pi * alchemical_lambda)) / 2
-            cutoffs = jnp.where(same_alchemical_group, 0.0, cutoff_scale * cutoffs)
+            cutoffs = jnp.where(same_alchemical_group, cutoffs, cutoff_scale * cutoffs)
 
         radial_basis = (
             bessel_basis(r_norm, self.radial_basis_size, self.cutoff)
