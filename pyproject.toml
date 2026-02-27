@@ -56,6 +56,9 @@ dev = [
 [tool.ruff]
 line-length = 100
 
+[tool.uv]
+environments = ["python_version >= '3.12'"]
+
 [tool.uv.sources]
 ase-db-backends = { git = "https://gitlab.com/ase/ase-db-backends.git" }
 jax-md = { git = "https://github.com/jax-md/jax-md.git" }
@@ -64,7 +67,7 @@ jax-md = { git = "https://github.com/jax-md/jax-md.git" }
 torch = [
   "e3nn>=0.5.8",
   "openequivariance>=0.5.4",
-  "torch==2.7.0",
+  "torch>=2.7.0",
   "torch-geometric>=2.6.1",
   "setuptools",
 ]
