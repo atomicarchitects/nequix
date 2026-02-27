@@ -1,57 +1,84 @@
 """Tests for torch-sim interface."""
 
 import pytest
+import torch
+from ase.build import bulk
 
-torch = pytest.importorskip("torch")
-ts = pytest.importorskip("torch_sim")
+try:
+    import torch_sim as ts
+    from torch_sim.models.interface import validate_model_outputs
+    from torch_sim.testing import (
+        SIMSTATE_BULK_GENERATORS,
+        assert_model_calculator_consistency,
+    )
+except (ImportError, OSError, RuntimeError):
+    pytest.skip("torch-sim not installed", allow_module_level=True)
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+from nequix.calculator import NequixCalculator
+from nequix.torch_sim import NequixTorchSimModel
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DTYPE = torch.float64
+
+# Load raw NequixTorch model at module level (like MACE loads raw_mace_mp)
+_calc = NequixCalculator("nequix-mp-1", backend="torch", use_compile=False, use_kernel=False)
+raw_nequix_model = _calc.model
 
 
 @pytest.fixture
-def nequix_model():
-    """Load Nequix model for torch-sim."""
-    from nequix.torch_sim import NequixTorchSimModel
-
-    return NequixTorchSimModel("nequix-mp-1", device=DEVICE)
+def si_atoms():
+    """Create Si diamond structure for testing."""
+    return bulk("Si", "diamond", a=5.43, cubic=True)
 
 
 @pytest.fixture
-def si_state():
-    """Create 2-atom Si diamond structure."""
-    return ts.SimState(
-        positions=torch.tensor([[0.0, 0.0, 0.0], [1.36, 1.36, 1.36]], device=DEVICE),
-        masses=torch.tensor([28.085, 28.085], device=DEVICE),
-        cell=torch.tensor(
-            [[[2.72, 2.72, 0.0], [2.72, 0.0, 2.72], [0.0, 2.72, 2.72]]], device=DEVICE
-        ),
-        pbc=True,
-        atomic_numbers=torch.tensor([14, 14], device=DEVICE),
+def nequix_calculator():
+    """Create Nequix ASE calculator for consistency testing."""
+    return NequixCalculator("nequix-mp-1", backend="torch", use_compile=False, use_kernel=False)
+
+
+@pytest.fixture
+def ts_nequix_model():
+    """Create NequixTorchSimModel wrapper."""
+    return NequixTorchSimModel(
+        model=raw_nequix_model,
+        device=DEVICE,
+        dtype=DTYPE,
     )
 
 
-def test_nequix_model_call(nequix_model, si_state):
-    """Test output format: keys, shapes, dtype, device, finite values."""
-    result = nequix_model(si_state)
-
-    assert result.keys() == {"energy", "forces", "stress"}
-    assert result["energy"].shape == (1,)
-    assert result["forces"].shape == (2, 3)
-    assert result["stress"].shape == (1, 3, 3)
-
-    for key, val in result.items():
-        assert val.dtype == torch.float64, f"{key} wrong dtype"
-        assert val.device.type == DEVICE.split(":")[0]
-        assert torch.isfinite(val).all(), f"{key} has non-finite values"
+def test_validate_model_outputs(ts_nequix_model):
+    """Test that model conforms to ModelInterface contract."""
+    validate_model_outputs(ts_nequix_model, DEVICE, DTYPE)
 
 
-def test_nequix_model_with_optimizer(nequix_model, si_state):
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_nequix_dtype_working(si_atoms, dtype):
+    """Test that the model works with both float32 and float64."""
+    model = NequixTorchSimModel(
+        model=raw_nequix_model,
+        device=DEVICE,
+        dtype=dtype,
+    )
+    state = ts.io.atoms_to_state([si_atoms], DEVICE, dtype)
+    model.forward(state)
+
+
+@pytest.mark.parametrize("sim_state_name", SIMSTATE_BULK_GENERATORS)
+def test_nequix_model_consistency(sim_state_name, ts_nequix_model, nequix_calculator):
+    """Test consistency between NequixTorchSimModel and NequixCalculator."""
+    sim_state = SIMSTATE_BULK_GENERATORS[sim_state_name](DEVICE, DTYPE)
+    assert_model_calculator_consistency(ts_nequix_model, nequix_calculator, sim_state)
+
+
+def test_nequix_optimize(ts_nequix_model, si_atoms):
     """Test integration with torch-sim optimize."""
+    state = ts.io.atoms_to_state([si_atoms], DEVICE, DTYPE)
     final = ts.optimize(
-        system=si_state,
-        model=nequix_model,
+        system=state,
+        model=ts_nequix_model,
         optimizer=ts.Optimizer.fire,
         max_steps=10,
-        convergence_fn=ts.runners.generate_force_convergence_fn(force_tol=0.1),
+        convergence_fn=ts.generate_force_convergence_fn(force_tol=0.1),
     )
-    assert final.positions.shape == si_state.positions.shape
+    assert final.positions.shape == state.positions.shape
