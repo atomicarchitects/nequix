@@ -68,7 +68,7 @@ torch = [
   "torch-geometric>=2.6.1",
   "setuptools",
 ]
-torch-sim = ["torch-sim-atomistic>=0.5.2"]
+torch-sim = ["torch-sim-atomistic>=0.5.2", "torch>=2.8.0"]
 oeq = [
   # You need to install openequivariance_extjax separately
   # uv pip install openequivariance_extjax --no-build-isolation

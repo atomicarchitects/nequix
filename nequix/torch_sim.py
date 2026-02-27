@@ -11,6 +11,7 @@ import torch
 
 
 from nequix.torch_impl.model import scatter
+from nequix.data import atomic_numbers_to_indices
 
 try:
     import torch_sim as ts
@@ -25,11 +26,6 @@ except ImportError:
 
 class NequixTorchSimModel(ModelInterface):
     """Computes energies, forces, and stresses using a Nequix model.
-
-    This class wraps a Nequix model for use within the TorchSim framework.
-    It supports batched calculations for multiple systems and handles the
-    necessary transformations between TorchSim's data structures and
-    Nequix's expected inputs.
 
     Attributes:
         r_max: Cutoff radius for neighbor interactions.
@@ -70,13 +66,12 @@ class NequixTorchSimModel(ModelInterface):
         else:
             raise TypeError(f"model must be a path or torch.nn.Module, got {type(model)}")
 
-        self.model = model.to(self._device)
+        self.model = model.to(device=self._device, dtype=self._dtype)
         self.model = self.model.eval()
 
         self.r_max = torch.tensor(config["cutoff"], dtype=self._dtype, device=self._device)
 
-        # GPU lookup table: atomic_number -> species index
-        atom_indices = {n: i for i, n in enumerate(sorted(config["atomic_numbers"]))}
+        atom_indices = atomic_numbers_to_indices(config["atomic_numbers"])
         max_z = max(atom_indices.keys())
         z_table = torch.full((max_z + 1,), -1, dtype=torch.long, device=self._device)
         for z, idx in atom_indices.items():
@@ -112,7 +107,7 @@ class NequixTorchSimModel(ModelInterface):
 
         species = self._z_to_species[sim_state.atomic_numbers]
 
-        positions = (
+        wrapped_positions = (
             ts.transforms.pbc_wrap_batched(
                 sim_state.positions, sim_state.cell, system_idx, sim_state.pbc
             )
@@ -127,7 +122,7 @@ class NequixTorchSimModel(ModelInterface):
         torch._dynamo.config.suppress_errors = True
         try:
             edge_index, _, unit_shifts = self.neighbor_list_fn(
-                positions,
+                wrapped_positions,
                 sim_state.row_vector_cell,
                 sim_state.pbc,
                 self.r_max,
@@ -138,7 +133,7 @@ class NequixTorchSimModel(ModelInterface):
 
         energy_per_atom, forces, stress = self.model(
             species,
-            positions.to(self._dtype),
+            wrapped_positions.to(self._dtype),
             unit_shifts.to(self._dtype),
             edge_index,
             sim_state.row_vector_cell.to(self._dtype),
@@ -150,13 +145,13 @@ class NequixTorchSimModel(ModelInterface):
         energies = scatter(energy_per_atom, system_idx, dim=0, dim_size=n_systems)
 
         results: dict[str, torch.Tensor] = {
-            "energy": energies.to(self._dtype),
+            "energy": energies.detach(),
         }
 
         if self._compute_forces:
-            results["forces"] = forces.to(self._dtype)
+            results["forces"] = forces.detach()
 
         if self._compute_stress and stress is not None:
-            results["stress"] = stress.to(self._dtype)
+            results["stress"] = stress.detach()
 
         return results
