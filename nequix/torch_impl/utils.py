@@ -237,4 +237,6 @@ def convert_model_jax_to_torch(jax_model, config, use_kernel):
         torch.from_numpy(np.array(jax_linear_readout_weights))
     )
 
+    torch_model.atomic_numbers = config["atomic_numbers"]
+
     return torch_model, config

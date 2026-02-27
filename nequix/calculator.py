@@ -107,6 +107,9 @@ class NequixCalculator(Calculator):
         if backend == "torch":
             import torch
 
+            if not hasattr(self.model, "atomic_numbers"):
+                self.model.atomic_numbers = self.config["atomic_numbers"]
+
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.model = self.model.to(self.device)
             self.model.eval()
