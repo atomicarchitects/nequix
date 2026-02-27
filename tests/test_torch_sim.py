@@ -14,16 +14,12 @@ try:
 except (ImportError, OSError, RuntimeError):
     pytest.skip("torch-sim not installed", allow_module_level=True)
 
-from torch_sim.neighbors import torch_nl_linked_cell, torchsim_nl
-
 from nequix.calculator import NequixCalculator
 from nequix.torch_sim import NequixTorchSimModel
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DTYPE = torch.float32
-NL_FN = torchsim_nl if torch.cuda.is_available() else torch_nl_linked_cell
 
-# Load raw NequixTorch model at module level (like MACE loads raw_mace_mp)
 _calc = NequixCalculator("nequix-mp-1", backend="torch", use_compile=False, use_kernel=False)
 raw_nequix_model = _calc.model
 
@@ -47,7 +43,6 @@ def ts_nequix_model():
         model=raw_nequix_model,
         device=DEVICE,
         dtype=DTYPE,
-        neighbor_list_fn=NL_FN,
     )
 
 
@@ -63,7 +58,6 @@ def test_nequix_dtype_working(si_atoms, dtype):
         model=raw_nequix_model,
         device=DEVICE,
         dtype=dtype,
-        neighbor_list_fn=NL_FN,
     )
     state = ts.io.atoms_to_state([si_atoms], DEVICE, dtype)
     model.forward(state)
