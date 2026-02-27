@@ -20,9 +20,6 @@ from nequix.torch_sim import NequixTorchSimModel
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DTYPE = torch.float32
 
-_calc = NequixCalculator("nequix-mp-1", backend="torch", use_compile=False, use_kernel=False)
-raw_nequix_model = _calc.model
-
 
 @pytest.fixture
 def si_atoms():
@@ -40,7 +37,8 @@ def nequix_calculator():
 def ts_nequix_model():
     """Create NequixTorchSimModel wrapper."""
     return NequixTorchSimModel(
-        model=raw_nequix_model,
+        model="nequix-mp-1",
+        use_kernel=False,
         device=DEVICE,
         dtype=DTYPE,
     )
@@ -55,7 +53,8 @@ def test_validate_model_outputs(ts_nequix_model):
 def test_nequix_dtype_working(si_atoms, dtype):
     """Test that the model works with both float32 and float64."""
     model = NequixTorchSimModel(
-        model=raw_nequix_model,
+        model="nequix-mp-1",
+        use_kernel=False,
         device=DEVICE,
         dtype=dtype,
     )

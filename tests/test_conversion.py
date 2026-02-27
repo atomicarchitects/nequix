@@ -16,9 +16,6 @@ def test_conversion():
     jax_model, jax_config = load_model_jax("./models/nequix-mp-1.nqx")
     torch_model, torch_config = convert_model_jax_to_torch(jax_model, jax_config, use_kernel=False)
 
-    assert hasattr(torch_model, "atomic_numbers"), "converted model must carry atomic_numbers"
-    assert torch_model.atomic_numbers == jax_config["atomic_numbers"]
-
     tmp_file_torch = tempfile.NamedTemporaryFile(suffix=".pt", delete=False)
     save_model_torch(tmp_file_torch.name, torch_model, torch_config)
 

@@ -13,8 +13,64 @@ from nequix.data import (
     dict_to_pytorch_geometric,
     preprocess_graph,
 )
+from nequix.torch_impl.model import NequixTorch
+from nequix.model import Nequix
 from nequix.model import load_model as load_model_jax
 from nequix.model import save_model as save_model_jax
+
+
+def from_pretrained(
+    model_name: str = None, model_path: str = None, backend: str = "jax", use_kernel: bool = True
+) -> tuple[Nequix | NequixTorch, dict]:
+    """Load a pretrained Nequix model from the cache, checkpoint path, or download it if necessary."""
+    assert backend in ["jax", "torch"], f"invalid backend: {backend}"
+    base_path = Path("~/.cache/nequix/models/").expanduser()
+    ext_for_backend = "nqx" if backend == "jax" else "pt"
+
+    if model_path is not None:
+        model_path = Path(model_path)
+    else:
+        # attempt to load checkpoint with desired backend
+        model_path = base_path / f"{model_name}.{ext_for_backend}"
+        if not model_path.exists():
+            # otherwise use nqx checkpoint
+            model_path = base_path / f"{model_name}.nqx"
+            if not model_path.exists():
+                # download if necessary
+                assert model_name in NequixCalculator.URLS, f"invalid model name: {model_name}"
+                model_path.parent.mkdir(parents=True, exist_ok=True)
+                urllib.request.urlretrieve(NequixCalculator.URLS[model_name], model_path)
+
+    path_backend = "jax" if model_path.suffix == ".nqx" else "torch"
+    if path_backend == backend:
+        if backend == "jax":
+            model, config = load_model_jax(model_path, use_kernel)
+        else:
+            from nequix.torch_impl.model import load_model as load_model_torch
+
+            model, config = load_model_torch(model_path, use_kernel)
+    else:
+        # Convert and save
+        if path_backend == "torch":
+            from nequix.torch_impl.utils import convert_model_torch_to_jax
+
+            torch_model, torch_config = load_model_torch(model_path, use_kernel)
+            print("Converting PyTorch model to JAX ...")
+            model, config = convert_model_torch_to_jax(torch_model, torch_config, use_kernel)
+            out_path = model_path.parent / f"{model_name}.nqx"
+            save_model_jax(out_path, model, config)
+        else:
+            from nequix.torch_impl.utils import convert_model_jax_to_torch
+
+            jax_model, jax_config = load_model_jax(model_path, use_kernel)
+            print("Converting JAX model to PyTorch ...")
+            model, config = convert_model_jax_to_torch(jax_model, jax_config, use_kernel)
+            out_path = model_path.parent / f"{model_name}.pt"
+            from nequix.torch_impl.model import save_model as save_model_torch
+
+            save_model_torch(out_path, model, config)
+        print("Model saved to ", out_path)
+    return model, config
 
 
 class NequixCalculator(Calculator):
@@ -54,61 +110,10 @@ class NequixCalculator(Calculator):
 
             assert torch.cuda.is_available(), "Kernels need GPU environment"
 
-        base_path = Path("~/.cache/nequix/models/").expanduser()
-        ext_for_backend = "nqx" if backend == "jax" else "pt"
-
-        if model_path is not None:
-            model_path = Path(model_path)
-        else:
-            # attempt to load checkpoint with desired backend
-            model_path = base_path / f"{model_name}.{ext_for_backend}"
-            if not model_path.exists():
-                # otherwise use nqx checkpoint
-                model_path = base_path / f"{model_name}.nqx"
-                if not model_path.exists():
-                    # download if necessary
-                    model_path.parent.mkdir(parents=True, exist_ok=True)
-                    urllib.request.urlretrieve(self.URLS[model_name], model_path)
-
-        path_backend = "jax" if model_path.suffix == ".nqx" else "torch"
-        if path_backend == backend:
-            if backend == "jax":
-                self.model, self.config = load_model_jax(model_path, use_kernel)
-            else:
-                from nequix.torch_impl.model import load_model as load_model_torch
-
-                self.model, self.config = load_model_torch(model_path, use_kernel)
-        else:
-            # Convert and save
-            if path_backend == "torch":
-                from nequix.torch_impl.utils import convert_model_torch_to_jax
-
-                torch_model, torch_config = load_model_torch(model_path, use_kernel)
-                print("Converting PyTorch model to JAX ...")
-                self.model, self.config = convert_model_torch_to_jax(
-                    torch_model, torch_config, use_kernel
-                )
-                out_path = model_path.parent / f"{model_name}.nqx"
-                save_model_jax(out_path, self.model, self.config)
-            else:
-                from nequix.torch_impl.utils import convert_model_jax_to_torch
-
-                jax_model, jax_config = load_model_jax(model_path, use_kernel)
-                print("Converting JAX model to PyTorch ...")
-                self.model, self.config = convert_model_jax_to_torch(
-                    jax_model, jax_config, use_kernel
-                )
-                out_path = model_path.parent / f"{model_name}.pt"
-                from nequix.torch_impl.model import save_model as save_model_torch
-
-                save_model_torch(out_path, self.model, self.config)
-            print("Model saved to ", out_path)
+        self.model, self.config = from_pretrained(model_name, model_path, backend, use_kernel)
 
         if backend == "torch":
             import torch
-
-            if not hasattr(self.model, "atomic_numbers"):
-                self.model.atomic_numbers = self.config["atomic_numbers"]
 
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.model = self.model.to(self.device)

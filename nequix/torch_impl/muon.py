@@ -2,7 +2,6 @@
 # to work with e3nn Linear
 
 import torch
-import torch.distributed as dist
 
 
 def zeropower_via_newtonschulz5(G, steps: int):
