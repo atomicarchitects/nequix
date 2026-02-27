@@ -61,7 +61,7 @@ class NequixTorchSimModel(ModelInterface):
         if isinstance(model, torch.nn.Module):
             config = {
                 "cutoff": model.cutoff,
-                "atomic_numbers": list(range(model.n_species)),
+                "atomic_numbers": getattr(model, "atomic_numbers", list(range(model.n_species))),
             }
         else:
             raise TypeError(f"model must be a path or torch.nn.Module, got {type(model)}")
@@ -130,6 +130,11 @@ class NequixTorchSimModel(ModelInterface):
             )
         finally:
             torch._dynamo.config.suppress_errors = prev
+
+        # torchsim_nl returns [source(i), target(j)] but the NequIP model
+        # expects [senders(j), receivers(i)] so scatter aggregates onto
+        # the center atom i.
+        edge_index = edge_index.flip(0)
 
         energy_per_atom, forces, stress = self.model(
             species,

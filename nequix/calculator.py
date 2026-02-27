@@ -201,7 +201,7 @@ class NequixCalculator(Calculator):
             )
 
         # take energy and forces without padding
-        energy = np.array(energy[0])
+        energy = float(energy[0])
         self.results["energy"] = energy
         self.results["free_energy"] = energy
         self.results["forces"] = np.array(forces)

@@ -720,4 +720,6 @@ def load_model(path: str, use_kernel=False) -> tuple[NequixTorch, dict]:
         # allow missing .tp. weights for the non kernel version
         model.load_state_dict(state_dict, strict=False)
 
+        model.atomic_numbers = config["atomic_numbers"]
+
         return model, config

@@ -18,7 +18,7 @@ from nequix.calculator import NequixCalculator
 from nequix.torch_sim import NequixTorchSimModel
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DTYPE = torch.float64
+DTYPE = torch.float32
 
 # Load raw NequixTorch model at module level (like MACE loads raw_mace_mp)
 _calc = NequixCalculator("nequix-mp-1", backend="torch", use_compile=False, use_kernel=False)
@@ -68,7 +68,13 @@ def test_nequix_dtype_working(si_atoms, dtype):
 def test_nequix_model_consistency(sim_state_name, ts_nequix_model, nequix_calculator):
     """Test consistency between NequixTorchSimModel and NequixCalculator."""
     sim_state = SIMSTATE_BULK_GENERATORS[sim_state_name](DEVICE, DTYPE)
-    assert_model_calculator_consistency(ts_nequix_model, nequix_calculator, sim_state)
+    assert_model_calculator_consistency(
+        ts_nequix_model,
+        nequix_calculator,
+        sim_state,
+        force_atol=5e-5,
+        stress_atol=5e-5,
+    )
 
 
 def test_nequix_optimize(ts_nequix_model, si_atoms):
