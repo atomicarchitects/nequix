@@ -201,10 +201,10 @@ class NequixCalculator(Calculator):
             )
 
         # take energy and forces without padding
-        energy = energy[0].numpy()
+        energy = np.array(energy[0])
         self.results["energy"] = energy
         self.results["free_energy"] = energy
-        self.results["forces"] = forces.numpy()
+        self.results["forces"] = np.array(forces)
         self.results["stress"] = (
-            full_3x3_to_voigt_6_stress(stress[0].numpy()) if stress is not None else None
+            full_3x3_to_voigt_6_stress(np.array(stress[0])) if stress is not None else None
         )
