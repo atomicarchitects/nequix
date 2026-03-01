@@ -100,7 +100,7 @@ class NequixCalculator(Calculator):
         capacity_multiplier: float = 1.1,  # Only for jax backend
         backend: str = "jax",
         use_kernel: bool = True,
-        use_compile: bool = True,  # Only for torch backend
+        use_compile: bool = False,  # Only for torch backend
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -209,7 +209,7 @@ class NequixCalculator(Calculator):
             )
 
         # take energy and forces without padding
-        energy = float(energy[0])
+        energy = energy[0].item()
         self.results["energy"] = energy
         self.results["free_energy"] = energy
         self.results["forces"] = np.array(forces)
