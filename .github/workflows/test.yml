@@ -5,8 +5,13 @@ on: [push, pull_request, workflow_dispatch]
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
       - run: uv sync --locked --all-extras --dev
       - run: uv run pytest tests
