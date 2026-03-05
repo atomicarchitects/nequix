@@ -92,11 +92,12 @@ def loss(model, batch, energy_weight, force_weight, stress_weight, loss_type="hu
     )
 
     # MAE stress
-    stress_mae_per_atom = jnp.sum(
-        jnp.abs(stress - batch.globals["stress"])
-        / jnp.where(batch.n_node > 0, batch.n_node, 1.0)[:, None, None]
-        * graph_mask[:, None, None]
-    ) / (9 * jnp.sum(graph_mask))
+    if stress_weight > 0:
+        stress_mae_per_atom = jnp.sum(
+            jnp.abs(stress - batch.globals["stress"]) * graph_mask[:, None, None]
+        ) / (9 * jnp.sum(graph_mask))
+    else:
+        stress_mae_per_atom = jnp.zeros((graph_mask.shape[0],))
 
     return total_loss, {
         "energy_mae_per_atom": energy_mae_per_atom,
