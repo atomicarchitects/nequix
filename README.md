@@ -24,7 +24,7 @@ to use [OpenEquivariance](https://github.com/PASSIONLab/OpenEquivariance) kernel
 ```bash
 pip install nequix[oeq]
 # needs to be run after installation:
-uv pip install openequivariance_extjax --no-build-isolation
+pip install openequivariance_extjax --no-build-isolation
 ```
 
 or for torch (also with kernels):
@@ -73,6 +73,15 @@ configuration file:
 ```bash
 nequix_train <config>.yml
 ```
+
+with kernels
+
+```bash
+uv sync --extra oeq
+uv pip install openequivariance_extjax --no-build-isolation
+nequix_train <config>.yml
+```
+
 or for Torch
 
 ```bash
