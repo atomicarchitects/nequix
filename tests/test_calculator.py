@@ -158,3 +158,13 @@ def test_calculator_nequix_mp_1_without_cell(backend, kernel):
     assert np.isfinite(energy)
     assert forces.shape == (len(atoms), 3)
     assert np.all(np.isfinite(forces))
+
+
+@pytest.mark.parametrize("kernel", [False, pytest.param(True, marks=skip_no_oeq)])
+def test_calculator_hessian(kernel):
+    atoms = si()
+    calc = NequixCalculator(model_name="nequix-mp-1", backend="jax", use_kernel=kernel)
+    hessian = calc.get_hessian(atoms)
+    print(hessian)
+    assert hessian.shape == (len(atoms), len(atoms), 3, 3)
+    assert np.all(np.isfinite(hessian))

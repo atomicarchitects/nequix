@@ -13,10 +13,11 @@ from nequix.data import (
     dict_to_pytorch_geometric,
     preprocess_graph,
 )
-from nequix.torch_impl.model import NequixTorch
 from nequix.model import Nequix
 from nequix.model import load_model as load_model_jax
 from nequix.model import save_model as save_model_jax
+from nequix.pft.hessian import hessian_linearized
+from nequix.torch_impl.model import NequixTorch
 
 
 def from_pretrained(
@@ -128,33 +129,33 @@ class NequixCalculator(Calculator):
         self._capacity_multiplier = capacity_multiplier
         self.backend = backend
 
+    def _pad_graph_jax(self, graph, numbers_changed=False):
+        # maintain edge capacity with _capacity_multiplier over edges,
+        # recalculate if numbers (system) changes, or if the capacity is exceeded
+        if self._capacity is None or numbers_changed or graph.n_edge[0] > self._capacity:
+            raw = int(np.ceil(graph.n_edge[0] * self._capacity_multiplier))
+            # round up edges to the nearest multiple of 64
+            # NB: this avoids excessive recompilation in high-throughput
+            # workflows (e.g.  material relaxtions) but this number may need
+            # to be tuned depending on the system sizes
+            self._capacity = ((raw + 63) // 64) * 64
+
+        # round up nodes to the nearest multiple of 8
+        # NB: this avoids excessive recompilation in high-throughput
+        # workflows (e.g. material relaxtions) but this number may need to
+        # be tuned depending on the system sizes
+        n_node = ((graph.n_node[0] + 8) // 8) * 8
+
+        # pad the graph
+        graph = jraph.pad_with_graphs(graph, n_node=n_node, n_edge=self._capacity, n_graph=2)
+        return graph
+
     def calculate(self, atoms=None, properties=None, system_changes=all_changes):
         Calculator.calculate(self, atoms)
         processed_graph = preprocess_graph(atoms, self.atom_indices, self.cutoff, False)
         if self.backend == "jax":
             graph = dict_to_graphstuple(processed_graph)
-            # maintain edge capacity with _capacity_multiplier over edges,
-            # recalculate if numbers (system) changes, or if the capacity is exceeded
-            if (
-                self._capacity is None
-                or ("numbers" in system_changes)
-                or graph.n_edge[0] > self._capacity
-            ):
-                raw = int(np.ceil(graph.n_edge[0] * self._capacity_multiplier))
-                # round up edges to the nearest multiple of 64
-                # NB: this avoids excessive recompilation in high-throughput
-                # workflows (e.g.  material relaxtions) but this number may need
-                # to be tuned depending on the system sizes
-                self._capacity = ((raw + 63) // 64) * 64
-
-            # round up nodes to the nearest multiple of 8
-            # NB: this avoids excessive recompilation in high-throughput
-            # workflows (e.g. material relaxtions) but this number may need to
-            # be tuned depending on the system sizes
-            n_node = ((graph.n_node[0] + 8) // 8) * 8
-
-            # pad the graph
-            graph = jraph.pad_with_graphs(graph, n_node=n_node, n_edge=self._capacity, n_graph=2)
+            graph = self._pad_graph_jax(graph, "numbers" in system_changes)
             energy, forces, stress = eqx.filter_jit(self.model)(graph)
             forces = forces[: len(atoms)]
 
@@ -216,3 +217,16 @@ class NequixCalculator(Calculator):
         self.results["stress"] = (
             full_3x3_to_voigt_6_stress(np.array(stress[0])) if stress is not None else None
         )
+
+    def get_hessian(self, atoms=None):
+        assert self.backend == "jax", "Hessian calculation currently only supported for JAX backend"
+        if atoms is None and self.atoms is None:
+            raise ValueError("atoms not set")
+        if atoms is None:
+            atoms = self.atoms
+        n_atoms = len(atoms)
+        processed_graph = preprocess_graph(atoms, self.atom_indices, self.cutoff, False)
+        graph = dict_to_graphstuple(processed_graph)
+        graph = self._pad_graph_jax(graph, True)
+        hessian = eqx.filter_jit(hessian_linearized)(self.model, graph)
+        return np.array(hessian[:n_atoms, :n_atoms, :, :], copy=True)
