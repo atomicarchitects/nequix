@@ -1,6 +1,5 @@
 import jax
 import jax.numpy as jnp
-import equinox as eqx
 
 
 def hessian_linearized(model, graph, batch_size=None):
