@@ -218,6 +218,7 @@ def train(config_path: str):
         stats = dataset_stats(train_dataset, atom_energies)
 
     num_devices = len(jax.devices())
+    print(f"Using {num_devices} devices for training")
     train_loader = DataLoader(
         train_dataset,
         batch_size=config["batch_size"],
@@ -272,6 +273,7 @@ def train(config_path: str):
         model, _ = load_model(config["finetune_from"])
 
     param_count = sum(p.size for p in jax.tree.flatten(eqx.filter(model, eqx.is_array))[0])
+    print(f"Loaded model with {param_count} parameters")
 
     # NB: this is not exact because of dynamic batching but should be close enough
     steps_per_epoch = len(train_dataset) // (config["batch_size"] * jax.device_count())
@@ -378,6 +380,7 @@ def train(config_path: str):
             (model, ema_model, opt_state, total_loss, metrics) = train_step(
                 model, ema_model, step, opt_state, batch
             )
+            # jax.block_until_ready(model)
             train_time = time.time() - start_time
             step = step + 1
             if step % config["log_every"] == 0:
