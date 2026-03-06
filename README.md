@@ -55,6 +55,13 @@ atoms.calc = NequixCalculator("nequix-mp-1", backend="torch")
 
 These are typically comparable in speed with kernels.
 
+Analytical Hessians can be calculated with (currently only supported for JAX backend):
+
+```python
+calc = NequixCalculator("nequix-mp-1", backend="jax")
+calc.get_hessian(atoms)  # np array of shape (n, n, 3, 3)
+```
+
 #### NequixCalculator
 
 Arguments

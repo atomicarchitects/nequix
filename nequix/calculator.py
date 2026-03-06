@@ -219,6 +219,7 @@ class NequixCalculator(Calculator):
         )
 
     def get_hessian(self, atoms=None):
+        assert self.backend == "jax", "Hessian calculation currently only supported for JAX backend"
         if atoms is None and self.atoms is None:
             raise ValueError("atoms not set")
         if atoms is None:
