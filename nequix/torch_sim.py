@@ -1,0 +1,165 @@
+"""torch-sim ModelInterface wrapper for Nequix.
+
+This module provides a TorchSim wrapper of the Nequix model for computing
+energies, forces, and stresses for atomistic systems.
+"""
+
+from collections.abc import Callable
+from pathlib import Path
+
+import torch
+
+from nequix.calculator import from_pretrained
+from nequix.torch_impl.model import scatter
+from nequix.data import atomic_numbers_to_indices
+
+try:
+    import torch_sim as ts
+    from torch_sim.models.interface import ModelInterface
+    from torch_sim.neighbors import torchsim_nl
+    from torch_sim.typing import StateDict
+except ImportError:
+    raise ImportError(
+        "torch-sim is not installed. Please install it using `pip install torch-sim-atomistic`."
+    )
+
+
+class NequixTorchSimModel(ModelInterface):
+    """Computes energies, forces, and stresses using a Nequix model.
+
+    Attributes:
+        r_max: Cutoff radius for neighbor interactions.
+        model: The underlying NequixTorch neural network model.
+        neighbor_list_fn: Function used to compute neighbor lists.
+    """
+
+    def __init__(
+        self,
+        model: str | Path,
+        use_kernel: bool = True,
+        *,
+        device: torch.device | None = None,
+        dtype: torch.dtype = torch.float64,
+        neighbor_list_fn: Callable = torchsim_nl,
+    ) -> None:
+        """Initialize the Nequix model for energy and force calculations.
+
+        Args:
+            model: Path to a .pt model file, or name of a pretrained model.
+            use_kernel: Whether to use the OpenEquivariance kernels.
+            device: Device to run computations on. Defaults to CUDA if available.
+            dtype: Data type for tensor operations. Defaults to float64.
+            neighbor_list_fn: Function to compute neighbor lists.
+                Defaults to torchsim_nl.
+        """
+        super().__init__()
+
+        self._device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._dtype = dtype
+        self._compute_stress = True
+        self._compute_forces = True
+        self._memory_scales_with = "n_atoms_x_density"
+        self.neighbor_list_fn = neighbor_list_fn
+        if Path(model).exists():
+            self.model, self.config = from_pretrained(
+                model_path=model, backend="torch", use_kernel=use_kernel
+            )
+        else:
+            self.model, self.config = from_pretrained(
+                model_name=model, backend="torch", use_kernel=use_kernel
+            )
+
+        self.model = self.model.to(device=self._device, dtype=self._dtype)
+        self.model = self.model.eval()
+
+        self.r_max = torch.tensor(self.config["cutoff"], dtype=self._dtype, device=self._device)
+
+        atom_indices = atomic_numbers_to_indices(self.config["atomic_numbers"])
+        max_z = max(atom_indices.keys())
+        z_table = torch.full((max_z + 1,), -1, dtype=torch.long, device=self._device)
+        for z, idx in atom_indices.items():
+            z_table[z] = idx
+        self._z_to_species = z_table
+
+    def forward(self, state: ts.SimState | StateDict) -> dict[str, torch.Tensor]:
+        """Compute energies, forces, and stresses for the given atomic systems.
+
+        Args:
+            state: SimState or state dict with positions, cell, atomic_numbers,
+                system_idx, and pbc fields.
+
+        Returns:
+            Dictionary with "energy" [n_systems], "forces" [n_atoms, 3],
+            and "stress" [n_systems, 3, 3] tensors.
+        """
+        sim_state = (
+            state
+            if isinstance(state, ts.SimState)
+            else ts.SimState(**state, masses=torch.ones_like(state["positions"]))
+        )
+
+        if sim_state.positions.device != self._device:
+            sim_state = sim_state.to(self._device)
+
+        system_idx = sim_state.system_idx
+        if system_idx is None or len(system_idx) == 0:
+            system_idx = torch.zeros(
+                len(sim_state.positions), dtype=torch.long, device=self._device
+            )
+        n_systems = int(system_idx.max().item()) + 1
+
+        species = self._z_to_species[sim_state.atomic_numbers]
+
+        wrapped_positions = (
+            ts.transforms.pbc_wrap_batched(
+                sim_state.positions, sim_state.cell, system_idx, sim_state.pbc
+            )
+            if sim_state.pbc.any()
+            else sim_state.positions
+        )
+
+        # Suppress dynamo errors to allow alchemiops @torch.compile to
+        # fall back to eager mode when it hits unbacked symbol issues
+        # from data-dependent shapes (torch.bincount).
+        prev = torch._dynamo.config.suppress_errors
+        torch._dynamo.config.suppress_errors = True
+        try:
+            edge_index, _, unit_shifts = self.neighbor_list_fn(
+                wrapped_positions,
+                sim_state.row_vector_cell,
+                sim_state.pbc,
+                self.r_max,
+                system_idx,
+            )
+        finally:
+            torch._dynamo.config.suppress_errors = prev
+
+        # torchsim_nl returns [source(i), target(j)] but the NequIP model
+        # expects [senders(j), receivers(i)] so scatter aggregates onto
+        # the center atom i.
+        edge_index = edge_index.flip(0)
+
+        energy_per_atom, forces, stress = self.model(
+            species,
+            wrapped_positions.to(self._dtype),
+            unit_shifts.to(self._dtype),
+            edge_index,
+            sim_state.row_vector_cell.to(self._dtype),
+            None,
+            None,
+            system_idx,
+        )
+
+        energies = scatter(energy_per_atom, system_idx, dim=0, dim_size=n_systems)
+
+        results: dict[str, torch.Tensor] = {
+            "energy": energies.detach(),
+        }
+
+        if self._compute_forces:
+            results["forces"] = forces.detach()
+
+        if self._compute_stress and stress is not None:
+            results["stress"] = stress.detach()
+
+        return results

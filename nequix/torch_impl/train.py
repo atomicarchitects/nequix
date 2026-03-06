@@ -1,6 +1,7 @@
 import argparse
 import copy
 import os
+from datetime import timedelta
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -123,9 +124,9 @@ def evaluate(
         val_loss, metrics = loss(
             model, batch, energy_weight, force_weight, stress_weight, loss_type, device
         )
-        total_metrics["loss"] += val_loss.item() * n_graphs
+        total_metrics["loss"] += val_loss.detach().item() * n_graphs
         for key, value in metrics.items():
-            total_metrics[key] += value.item() * n_graphs
+            total_metrics[key] += value.detach().item() * n_graphs
         total_count += n_graphs
 
     for key, value in total_metrics.items():
@@ -541,7 +542,12 @@ def train(config_path: str):
         train_loader.sampler.set_start_iter(0)
         checkpoint_steps_through_epoch = 0
 
+        if is_distributed:
+            # wait for all ranks to finish training
+            torch.distributed.barrier()
+
         if rank == 0:
+            # TODO: multi gpu validation, evaluate subset on each rank and aggregate metrics
             val_metrics = evaluate(
                 ema_model,
                 val_loader,
@@ -566,13 +572,19 @@ def train(config_path: str):
             print(f"epoch: {epoch}, logs: {logs}")
             wandb_sync()
 
+        if is_distributed:
+            # wait for validation to finish
+            torch.distributed.barrier()
+
     if is_distributed and epoch == config["n_epochs"] - 1:
         cleanup_ddp()
 
 
 def setup_ddp():
     """Initialize distributed training"""
-    init_process_group(backend="nccl")
+    # NOTE: set timeout to 30 minutes so validation doesn't cause NCCL timeout
+    # (wouldn't be a problem if we used multi-gpu validation, see TODO above)
+    init_process_group(backend="nccl", timeout=timedelta(minutes=30))
     torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
 
 

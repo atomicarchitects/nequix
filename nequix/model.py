@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import jraph
 
 from nequix.layer_norm import RMSLayerNorm
+from nequix.repulsion import make_NLH_repulsion
 
 try:
     import torch  # noqa: F401
@@ -310,7 +311,7 @@ class Nequix(eqx.Module):
     def __init__(
         self,
         key,
-        n_species,
+        atomic_numbers: list[int],
         lmax: int = 3,
         cutoff: float = 5.0,
         hidden_irreps: str = "128x0e + 128x1o + 128x2e + 128x3o",
@@ -327,10 +328,11 @@ class Nequix(eqx.Module):
         atom_energies: Optional[Sequence[float]] = None,
         layer_norm: bool = False,
         kernel: bool = False,
+        add_repulsion: bool = False,
     ):
         self.lmax = lmax
         self.cutoff = cutoff
-        self.n_species = n_species
+        self.n_species = len(atomic_numbers)
         self.radial_basis_size = radial_basis_size
         self.radial_polynomial_p = radial_polynomial_p
         self.shift = shift
@@ -368,6 +370,11 @@ class Nequix(eqx.Module):
         self.readout = e3nn.equinox.Linear(
             irreps_in=hidden_irreps.filter("0e"), irreps_out="0e", key=key
         )
+        self.add_repulsion = add_repulsion
+        if add_repulsion:
+            self.repulsion_fn = make_NLH_repulsion(
+                atomic_numbers=atomic_numbers,
+            )
 
     def node_energies(
         self,
@@ -431,6 +438,11 @@ class Nequix(eqx.Module):
 
         # add isolated atom energies to each node as prior
         node_energies = node_energies + jax.lax.stop_gradient(self.atom_energies[species, None])
+
+        if self.add_repulsion:
+            node_energies = node_energies + self.repulsion_fn(
+                species=species, senders=senders, receivers=receivers, r_norm=r_norm, cutoffs=cutoffs,
+            )[:, None]
 
         return node_energies.array
 
@@ -553,7 +565,7 @@ def load_model(path: str, kernel: bool = False) -> tuple[Nequix, dict]:
         config = json.loads(f.readline().decode())
         model = Nequix(
             key=jax.random.key(0),
-            n_species=len(config["atomic_numbers"]),
+            atomic_numbers=config["atomic_numbers"],
             hidden_irreps=config["hidden_irreps"],
             lmax=config["lmax"],
             cutoff=config["cutoff"],

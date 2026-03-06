@@ -558,7 +558,7 @@ class NequixTorch(torch.nn.Module):
         receivers: torch.Tensor,
     ):
         # input features are one-hot encoded species
-        features = torch.nn.functional.one_hot(species, self.n_species).to(torch.float32)
+        features = torch.nn.functional.one_hot(species, self.n_species).to(displacements.dtype)
         r_norm = torch.linalg.norm(displacements, ord=2, dim=-1)
 
         radial_basis = (
@@ -635,7 +635,7 @@ class NequixTorch(torch.nn.Module):
             minus_forces, virial = torch.autograd.grad(
                 outputs=[node_energies.sum()],
                 inputs=[positions, eps],
-                create_graph=True,
+                create_graph=self.training,
                 materialize_grads=True,
             )
 
@@ -647,7 +647,7 @@ class NequixTorch(torch.nn.Module):
             minus_forces = torch.autograd.grad(
                 outputs=[node_energies.sum()],
                 inputs=[positions],
-                create_graph=True,
+                create_graph=self.training,
                 materialize_grads=True,
             )[0]
             stress = None

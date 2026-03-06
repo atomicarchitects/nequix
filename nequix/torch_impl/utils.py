@@ -41,7 +41,7 @@ class StatefulDistributedSampler(DistributedSampler):
         # shuffle the full dataset first, then partition the shuffled indices
         g = torch.Generator()
         g.manual_seed(self.epoch + self.seed)
-        full_shuffle = torch.randperm(self.total_size, generator=g)
+        full_shuffle = torch.randperm(len(self.dataset), generator=g)[: self.total_size]
         # rank r gets indices at positions r, r+num_replicas, r+2*num_replicas, ...
         indices = full_shuffle[self.rank :: self.num_replicas].tolist()
 
