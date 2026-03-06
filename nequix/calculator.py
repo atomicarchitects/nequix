@@ -13,16 +13,14 @@ from nequix.data import (
     dict_to_pytorch_geometric,
     preprocess_graph,
 )
-from nequix.model import Nequix
 from nequix.model import load_model as load_model_jax
 from nequix.model import save_model as save_model_jax
 from nequix.pft.hessian import hessian_linearized
-from nequix.torch_impl.model import NequixTorch
 
 
 def from_pretrained(
     model_name: str = None, model_path: str = None, backend: str = "jax", use_kernel: bool = True
-) -> tuple[Nequix | NequixTorch, dict]:
+):
     """Load a pretrained Nequix model from the cache, checkpoint path, or download it if necessary."""
     assert backend in ["jax", "torch"], f"invalid backend: {backend}"
     base_path = Path("~/.cache/nequix/models/").expanduser()
