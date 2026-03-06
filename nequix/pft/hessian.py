@@ -21,7 +21,6 @@ def hessian_linearized(model, graph, batch_size=None):
 
     pos = graph.nodes["positions"]
     _, hvp = jax.linearize(jax.grad(total_energy_fn), pos)
-    hvp = jax.jit(hvp)
     basis = jnp.eye(pos.shape[0] * pos.shape[1]).reshape(-1, *pos.shape)
     return (
         jax.lax.map(hvp, basis, batch_size=batch_size)
