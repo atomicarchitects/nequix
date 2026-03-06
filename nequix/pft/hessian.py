@@ -3,7 +3,6 @@ import jax.numpy as jnp
 import equinox as eqx
 
 
-@eqx.filter_jit
 def hessian_linearized(model, graph, batch_size=None):
     cell_per_edge = jnp.repeat(
         graph.globals["cell"],
