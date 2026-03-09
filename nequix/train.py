@@ -71,7 +71,7 @@ def loss(model, batch, energy_weight, force_weight, stress_weight, loss_type="hu
             loss_fns[config["stress"]](stress, batch.globals["stress"]) * graph_mask[:, None, None]
         ) / (9 * jnp.sum(graph_mask))
     else:
-        stress_loss = 0
+        stress_loss = jnp.array(0.0)
 
     total_loss = (
         energy_weight * energy_loss_per_atom
@@ -97,7 +97,7 @@ def loss(model, batch, energy_weight, force_weight, stress_weight, loss_type="hu
             jnp.abs(stress - batch.globals["stress"]) * graph_mask[:, None, None]
         ) / (9 * jnp.sum(graph_mask))
     else:
-        stress_mae_per_atom = jnp.zeros((graph_mask.shape[0],))
+        stress_mae_per_atom = jnp.array(0.0)
 
     return total_loss, {
         "energy_mae_per_atom": energy_mae_per_atom,
@@ -248,7 +248,7 @@ def train(config_path: str):
     key = jax.random.key(0)
     model = Nequix(
         key,
-        n_species=len(config["atomic_numbers"]),
+        atomic_numbers=config["atomic_numbers"],
         hidden_irreps=config["hidden_irreps"],
         lmax=config["lmax"],
         cutoff=config["cutoff"],
@@ -265,6 +265,7 @@ def train(config_path: str):
         avg_n_neighbors=stats["avg_n_neighbors"],
         atom_energies=atom_energies,
         kernel=config["kernel"],
+        add_repulsion=config.get("add_repulsion", False),
     )
     if "finetune_from" in config and Path(config["finetune_from"]).exists():
         if "atom_energies" in config:

@@ -8,9 +8,10 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jraph
+from pathlib import Path
+import numpy as np
 
 from nequix.layer_norm import RMSLayerNorm
-from nequix.repulsion import make_NLH_repulsion
 
 try:
     import torch  # noqa: F401
@@ -48,6 +49,80 @@ def polynomial_cutoff(x: jax.Array, r_max: float, p: float) -> jax.Array:
     out = out + (p * (p + 2.0) * jnp.power(x, p + 1.0))
     out = out - ((p * (p + 1.0) / 2) * jnp.power(x, p + 2.0))
     return out * jnp.where(x < 1.0, 1.0, 0.0)
+
+
+class NLHRepulsion(eqx.Module):
+    CS: jax.Array
+    ALPHAS: jax.Array
+    atomic_numbers: jax.Array
+
+    ZMAX: int = eqx.field(static=True)
+    alchemical_softcore_alpha: float = eqx.field(static=True)
+    alchemical_m: float = eqx.field(static=True)
+
+    BOHR_TO_ANG: float = 0.52917721
+    HARTREE_TO_EV: float = 27.211386
+
+    def __init__(
+        self,
+        atomic_numbers: np.ndarray,
+        coefficients_file: str = Path(__file__).parent / "nlh_coeffs.dat",
+        alchemical_softcore_alpha: float = 0.5,
+        alchemical_m: float = 2.0,
+    ):
+        self.atomic_numbers = jnp.array(atomic_numbers, dtype=jnp.int32)
+
+        DATA_NLH = np.loadtxt(coefficients_file, usecols=np.arange(0, 8))
+        ZMAX = int(np.max(DATA_NLH[:, 0]))
+        AB = np.zeros(((ZMAX + 1) ** 2, 6), dtype=np.float32)
+        for i in range(DATA_NLH.shape[0]):
+            z1 = int(DATA_NLH[i, 0])
+            z2 = int(DATA_NLH[i, 1])
+            AB[z1 + ZMAX * z2] = DATA_NLH[i, 2:8]
+            AB[z2 + ZMAX * z1] = DATA_NLH[i, 2:8]
+        AB = AB.reshape((ZMAX + 1) ** 2, 3, 2)
+
+        self.CS = jnp.array(AB[:, :, 0])
+        self.ALPHAS = jnp.array(AB[:, :, 1])
+        self.ZMAX = ZMAX
+        self.alchemical_softcore_alpha = alchemical_softcore_alpha
+        self.alchemical_m = alchemical_m
+
+    def __call__(
+        self,
+        species: jax.Array,
+        senders: jax.Array,
+        receivers: jax.Array,
+        r_norm: jax.Array,
+        cutoffs: jax.Array,
+        alchemical_group: jax.Array | None = None,
+        alchemical_lambda_v: float | None = None,
+    ) -> jax.Array:
+        Z = self.atomic_numbers[species]
+        s12 = Z[senders] + self.ZMAX * Z[receivers]
+        cs = self.CS[s12]
+        alphas = self.ALPHAS[s12]
+
+        if alchemical_group is not None:
+            same_alchemical_group = (
+                alchemical_group[senders] == alchemical_group[receivers]
+            )
+            alch_alpha = self.alchemical_softcore_alpha**2 * (1 - alchemical_lambda_v)
+            r_norm = jnp.where(
+                same_alchemical_group, r_norm, jnp.sqrt(r_norm**2 + alch_alpha)
+            )
+            lambda_v = 0.5 * (1 - jnp.cos(jnp.pi * alchemical_lambda_v))
+            cutoffs = jnp.where(
+                same_alchemical_group, cutoffs, (lambda_v**self.alchemical_m) * cutoffs
+            )
+
+        Z = jnp.where(Z > 0, Z.astype(r_norm.dtype), 0.0)
+        phi = (cs * jnp.exp(-alphas * r_norm[:, None])).sum(axis=-1)
+        Zij = Z[senders] * Z[receivers] * cutoffs
+        E_rep_pair = Zij * phi / r_norm
+        E_rep = jnp.zeros(Z.shape[0]).at[senders].add(E_rep_pair)
+        E_rep *= 0.5 * self.BOHR_TO_ANG * self.HARTREE_TO_EV
+        return E_rep
 
 
 class Sort(eqx.Module):
@@ -307,6 +382,7 @@ class Nequix(eqx.Module):
     atom_energies: jax.Array
     layers: list[NequixConvolution]
     readout: e3nn.equinox.Linear
+    repulsion_fn: Optional[NLHRepulsion]
 
     def __init__(
         self,
@@ -340,9 +416,9 @@ class Nequix(eqx.Module):
         self.atom_energies = (
             jnp.array(atom_energies)
             if atom_energies is not None
-            else jnp.zeros(n_species, dtype=jnp.float32)
+            else jnp.zeros(self.n_species, dtype=jnp.float32)
         )
-        input_irreps = e3nn.Irreps(f"{n_species}x0e")
+        input_irreps = e3nn.Irreps(f"{self.n_species}x0e")
         sh_irreps = e3nn.s2_irreps(lmax)
         hidden_irreps = e3nn.Irreps(hidden_irreps)
         self.layers = []
@@ -355,7 +431,7 @@ class Nequix(eqx.Module):
                     input_irreps=input_irreps if i == 0 else hidden_irreps,
                     output_irreps=hidden_irreps if i < n_layers - 1 else hidden_irreps.filter("0e"),
                     sh_irreps=sh_irreps,
-                    n_species=n_species,
+                    n_species=self.n_species,
                     radial_basis_size=radial_basis_size,
                     radial_mlp_size=radial_mlp_size,
                     radial_mlp_layers=radial_mlp_layers,
@@ -370,11 +446,11 @@ class Nequix(eqx.Module):
         self.readout = e3nn.equinox.Linear(
             irreps_in=hidden_irreps.filter("0e"), irreps_out="0e", key=key
         )
-        self.add_repulsion = add_repulsion
         if add_repulsion:
-            self.repulsion_fn = make_NLH_repulsion(
-                atomic_numbers=atomic_numbers,
-            )
+            print("Adding NLH repulsion term to model.")
+            self.repulsion_fn = NLHRepulsion(atomic_numbers=atomic_numbers)
+        else:
+            raise ValueError("add_repulsion must be True to use repulsion term.")
 
     def node_energies(
         self,
@@ -383,7 +459,8 @@ class Nequix(eqx.Module):
         senders: jax.Array,
         receivers: jax.Array,
         alchemical_group: Optional[jax.Array] = None,
-        alchemical_lambda: Optional[float] = None,
+        alchemical_lambda_e: Optional[float] = None,
+        alchemical_lambda_v: Optional[float] = None,
     ):
         # input features are one-hot encoded species
         features = e3nn.IrrepsArray(
@@ -403,7 +480,7 @@ class Nequix(eqx.Module):
         # Scale cutoffs for cross-group alchemical interactions.
         if alchemical_group is not None:
             same_alchemical_group = (alchemical_group[senders] == alchemical_group[receivers])
-            cutoff_scale = (1 - jnp.cos(jnp.pi * alchemical_lambda)) / 2
+            cutoff_scale = (1 - jnp.cos(jnp.pi * alchemical_lambda_e)) / 2
             cutoffs = jnp.where(same_alchemical_group, cutoffs, cutoff_scale * cutoffs)
 
         radial_basis = (
@@ -439,10 +516,17 @@ class Nequix(eqx.Module):
         # add isolated atom energies to each node as prior
         node_energies = node_energies + jax.lax.stop_gradient(self.atom_energies[species, None])
 
-        if self.add_repulsion:
-            node_energies = node_energies + self.repulsion_fn(
-                species=species, senders=senders, receivers=receivers, r_norm=r_norm, cutoffs=cutoffs,
-            )[:, None]
+        # add repulsion term if specified
+        if self.repulsion_fn is not None:
+            node_energies = node_energies + jax.lax.stop_gradient(self.repulsion_fn(
+                species=species,
+                senders=senders,
+                receivers=receivers,
+                r_norm=r_norm,
+                cutoffs=cutoffs,
+                alchemical_group=alchemical_group,
+                alchemical_lambda_v=alchemical_lambda_v,
+            )[:, None])
 
         return node_energies.array
 
@@ -581,6 +665,7 @@ def load_model(path: str, kernel: bool = False) -> tuple[Nequix, dict]:
             scale=config["scale"],
             avg_n_neighbors=config["avg_n_neighbors"],
             kernel=kernel,
+            add_repulsion=config.get("add_repulsion", False),
             # NOTE: atom_energies will be in model weights
         )
         model = eqx.tree_deserialise_leaves(f, model)
