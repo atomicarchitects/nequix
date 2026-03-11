@@ -52,10 +52,9 @@ def polynomial_cutoff(x: jax.Array, r_max: float, p: float) -> jax.Array:
 
 
 class NLHRepulsion(eqx.Module):
-    CS: jax.Array
-    ALPHAS: jax.Array
-    atomic_numbers: jax.Array
-
+    CS: np.ndarray = eqx.field(static=True)
+    ALPHAS: np.ndarray = eqx.field(static=True)
+    atomic_numbers: np.ndarray = eqx.field(static=True)
     ZMAX: int = eqx.field(static=True)
     alchemical_softcore_alpha: float = eqx.field(static=True)
     alchemical_m: float = eqx.field(static=True)
@@ -70,7 +69,7 @@ class NLHRepulsion(eqx.Module):
         alchemical_softcore_alpha: float = 0.5,
         alchemical_m: float = 2.0,
     ):
-        self.atomic_numbers = jnp.array(atomic_numbers, dtype=jnp.int32)
+        self.atomic_numbers = np.array(atomic_numbers, dtype=np.int32)
 
         DATA_NLH = np.loadtxt(coefficients_file, usecols=np.arange(0, 8))
         ZMAX = int(np.max(DATA_NLH[:, 0]))
@@ -82,8 +81,8 @@ class NLHRepulsion(eqx.Module):
             AB[z2 + ZMAX * z1] = DATA_NLH[i, 2:8]
         AB = AB.reshape((ZMAX + 1) ** 2, 3, 2)
 
-        self.CS = jnp.array(AB[:, :, 0])
-        self.ALPHAS = jnp.array(AB[:, :, 1])
+        self.CS = np.array(AB[:, :, 0])
+        self.ALPHAS = np.array(AB[:, :, 1])
         self.ZMAX = ZMAX
         self.alchemical_softcore_alpha = alchemical_softcore_alpha
         self.alchemical_m = alchemical_m
@@ -98,10 +97,10 @@ class NLHRepulsion(eqx.Module):
         alchemical_group: jax.Array | None = None,
         alchemical_lambda_v: float | None = None,
     ) -> jax.Array:
-        Z = self.atomic_numbers[species]
+        Z = jnp.asarray(self.atomic_numbers)[species]
         s12 = Z[senders] + self.ZMAX * Z[receivers]
-        cs = self.CS[s12]
-        alphas = self.ALPHAS[s12]
+        cs = jnp.asarray(self.CS)[s12]
+        alphas = jnp.asarray(self.ALPHAS)[s12]
 
         if alchemical_group is not None:
             same_alchemical_group = (
@@ -202,6 +201,43 @@ class MLP(eqx.Module):
             if i < len(self.layers) - 1:
                 x = self.activation(x)
         return x
+
+
+class NoiseConditionalLinear(eqx.Module):
+    """Linear layer whose weights are scaled by a per-sample sigma embedding."""
+    linear: e3nn.equinox.Linear
+    sigma_mlp: MLP
+    irreps_in: e3nn.Irreps = eqx.field(static=True)
+
+    def __init__(self, irreps_in: e3nn.Irreps, irreps_out: e3nn.Irreps, *, key: jax.Array):
+        k1, k2 = jax.random.split(key)
+        self.irreps_in = irreps_in
+        self.linear = e3nn.equinox.Linear(irreps_in=irreps_in, irreps_out=irreps_out, key=k1)
+        # outputs one scale per input irrep channel, init to 1
+        num_irreps = irreps_in.num_irreps
+        self.sigma_mlp = MLP(
+            sizes=[1, 64, num_irreps],
+            activation=jax.nn.silu,
+            use_bias=True,
+            key=k2,
+        )
+        # init last layer to zero weights, one bias -> scales start at 1
+        last = self.sigma_mlp.layers[-1]
+        self.sigma_mlp = eqx.tree_at(
+            lambda m: m.layers[-1].weights, self.sigma_mlp, jnp.zeros_like(last.weights)
+        )
+        self.sigma_mlp = eqx.tree_at(
+            lambda m: m.layers[-1].bias, self.sigma_mlp, jnp.ones_like(last.bias)
+        )
+
+    def __call__(self, x: e3nn.IrrepsArray, sigma_per_node: jax.Array) -> e3nn.IrrepsArray:
+        # sigma_per_node: (n_nodes,)
+        log_sigma = jnp.log(jnp.where(sigma_per_node > 0, sigma_per_node, 1.0))
+        scales = jax.vmap(self.sigma_mlp)(log_sigma[:, None])   # (n_nodes, num_irreps)
+        scaled_x = e3nn.elementwise_tensor_product(
+            x, e3nn.IrrepsArray(f"{self.irreps_in.num_irreps}x0e", scales)
+        )
+        return self.linear(scaled_x)
 
 
 class NequixConvolution(eqx.Module):
@@ -382,6 +418,7 @@ class Nequix(eqx.Module):
     atom_energies: jax.Array
     layers: list[NequixConvolution]
     readout: e3nn.equinox.Linear
+    readout_noise: NoiseConditionalLinear
     repulsion_fn: Optional[NLHRepulsion]
 
     def __init__(
@@ -443,14 +480,26 @@ class Nequix(eqx.Module):
                 )
             )
 
+        scalar_irreps = hidden_irreps.filter("0e")
+
+        key, readout_key = jax.random.split(key)
         self.readout = e3nn.equinox.Linear(
-            irreps_in=hidden_irreps.filter("0e"), irreps_out="0e", key=key
+            irreps_in=scalar_irreps, irreps_out="0e", key=readout_key
         )
+
+        # Noise head: separate weights, same input irreps.
+        # Initialised from a fresh key so it starts independent of readout.
+        key, noise_key = jax.random.split(key)
+        self.readout_noise = NoiseConditionalLinear(
+            irreps_in=scalar_irreps, irreps_out="0e", key=noise_key
+        )
+        self.readout_noise = None
+
         if add_repulsion:
             print("Adding NLH repulsion term to model.")
             self.repulsion_fn = NLHRepulsion(atomic_numbers=atomic_numbers)
         else:
-            raise ValueError("add_repulsion must be True to use repulsion term.")
+            self.repulsion_fn = None
 
     def node_energies(
         self,
@@ -461,23 +510,17 @@ class Nequix(eqx.Module):
         alchemical_group: Optional[jax.Array] = None,
         alchemical_lambda_e: Optional[float] = None,
         alchemical_lambda_v: Optional[float] = None,
+        sigma_per_node: Optional[float] = None,
     ):
-        # input features are one-hot encoded species
         features = e3nn.IrrepsArray(
             e3nn.Irreps(f"{self.n_species}x0e"), jax.nn.one_hot(species, self.n_species)
         )
 
-        # safe norm (avoids nan for r = 0)
         square_r_norm = jnp.sum(displacements**2, axis=-1)
         r_norm = jnp.where(square_r_norm == 0.0, 0.0, jnp.sqrt(square_r_norm))
 
-        cutoffs =  polynomial_cutoff(
-            r_norm,
-            self.cutoff,
-            self.radial_polynomial_p,
-        )
+        cutoffs = polynomial_cutoff(r_norm, self.cutoff, self.radial_polynomial_p)
 
-        # Scale cutoffs for cross-group alchemical interactions.
         if alchemical_group is not None:
             same_alchemical_group = (alchemical_group[senders] == alchemical_group[receivers])
             cutoff_scale = (1 - jnp.cos(jnp.pi * alchemical_lambda_e)) / 2
@@ -488,7 +531,6 @@ class Nequix(eqx.Module):
             * cutoffs[:, None]
         )
 
-        # compute spherical harmonics of edge displacements
         sh = e3nn.spherical_harmonics(
             e3nn.s2_irreps(self.lmax),
             displacements,
@@ -497,15 +539,9 @@ class Nequix(eqx.Module):
         )
 
         for layer in self.layers:
-            features = layer(
-                features,
-                species,
-                sh,
-                radial_basis,
-                senders,
-                receivers,
-            )
+            features = layer(features, species, sh, radial_basis, senders, receivers)
 
+        # base energy
         node_energies = self.readout(features)
 
         # scale and shift energies
@@ -513,12 +549,10 @@ class Nequix(eqx.Module):
             self.shift
         )
 
-        # add isolated atom energies to each node as prior
-        node_energies = node_energies + jax.lax.stop_gradient(self.atom_energies[species, None])
 
         # add repulsion term if specified
         if self.repulsion_fn is not None:
-            node_energies = node_energies + jax.lax.stop_gradient(self.repulsion_fn(
+            node_energies = node_energies + self.repulsion_fn(
                 species=species,
                 senders=senders,
                 receivers=receivers,
@@ -526,17 +560,31 @@ class Nequix(eqx.Module):
                 cutoffs=cutoffs,
                 alchemical_group=alchemical_group,
                 alchemical_lambda_v=alchemical_lambda_v,
-            )[:, None])
+            )[:, None]
+
+        # add isolated atom energies to each node as prior
+        node_energies = node_energies + jax.lax.stop_gradient(self.atom_energies[species, None])
+
+        # noise conditioning: U(x, sigma) = U(x) + sigma^2 * f(x) 
+        if sigma_per_node is not None:
+            noise_correction = self.readout_noise(features, sigma_per_node)  # (n_nodes, 1)
+            node_energies = node_energies + (sigma_per_node**2)[:, None] * noise_correction
 
         return node_energies.array
 
-    def __call__(self, data: jraph.GraphsTuple):
+    def __call__(self, data: jraph.GraphsTuple, sigma: Optional[jax.Array] = None):  # <-- sigma_per_node threaded through
+        node_graph_index = node_graph_idx(data)
+        if sigma is None:
+            sigma_per_node = None
+        else:
+            sigma_per_node = sigma[node_graph_index]
+
         if data.globals["cell"] is None:
-            # compute forces and stress as gradient of total energy w.r.t positions
             def total_energy_fn(positions: jax.Array):
                 r = positions[data.senders] - positions[data.receivers]
                 node_energies = self.node_energies(
-                    r, data.nodes["species"], data.senders, data.receivers
+                    r, data.nodes["species"], data.senders, data.receivers,
+                    sigma_per_node=sigma_per_node,
                 )
                 return jnp.sum(node_energies), node_energies
 
@@ -544,31 +592,26 @@ class Nequix(eqx.Module):
                 data.nodes["positions"]
             )
         else:
-            # compute forces and stress as gradient of total energy w.r.t positions and strain
             def total_energy_fn(positions_eps: tuple[jax.Array, jax.Array]):
                 positions, eps = positions_eps
                 eps_sym = (eps + eps.swapaxes(1, 2)) / 2
                 eps_sym_per_node = jnp.repeat(
-                    eps_sym,
-                    data.n_node,
-                    axis=0,
+                    eps_sym, data.n_node, axis=0,
                     total_repeat_length=data.nodes["positions"].shape[0],
                 )
-                # apply strain to positions and cell
                 positions = positions + jnp.einsum("ik,ikj->ij", positions, eps_sym_per_node)
                 cell = data.globals["cell"] + jnp.einsum(
                     "bij,bjk->bik", data.globals["cell"], eps_sym
                 )
                 cell_per_edge = jnp.repeat(
-                    cell,
-                    data.n_edge,
-                    axis=0,
+                    cell, data.n_edge, axis=0,
                     total_repeat_length=data.edges["shifts"].shape[0],
                 )
                 offsets = jnp.einsum("ij,ijk->ik", data.edges["shifts"], cell_per_edge)
                 r = positions[data.senders] - positions[data.receivers] + offsets
                 node_energies = self.node_energies(
-                    r, data.nodes["species"], data.senders, data.receivers
+                    r, data.nodes["species"], data.senders, data.receivers,
+                    sigma_per_node=sigma_per_node,
                 )
                 return jnp.sum(node_energies), node_energies
 
@@ -614,10 +657,10 @@ def node_graph_idx(data: jraph.GraphsTuple) -> jnp.ndarray:
 
 
 def weight_decay_mask(model):
-    """weight decay mask (only apply decay to linear weights)"""
+    """Returns a pytree with the same structure as the model, where each leaf is a boolean indicating whether to apply weight decay to that leaf."""
 
     def is_layer(x):
-        return isinstance(x, Linear) or isinstance(x, e3nn.equinox.Linear)
+        return isinstance(x, (Linear, e3nn.equinox.Linear))
 
     def set_mask(x):
         if isinstance(x, Linear):
@@ -628,8 +671,6 @@ def weight_decay_mask(model):
             return jax.tree.map(lambda _: True, x)
         else:
             return jax.tree.map(lambda _: False, x)
-
-        return mask
 
     mask = jax.tree.map(set_mask, model, is_leaf=is_layer)
     return mask
