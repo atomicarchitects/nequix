@@ -417,7 +417,6 @@ def train(config_path: str):
                 print(f"step: {step}, logs: {logs}")
                 wandb_sync()
             start_time = time.time()
-            break
 
         val_metrics = evaluate(
             ema_model,
