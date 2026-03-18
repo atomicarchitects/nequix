@@ -396,6 +396,7 @@ def train(config_path: str):
             batch_time = time.time() - start_time
             start_time = time.time()
             batch_sharded = eqx.filter_shard(batch, data_sharding)
+            # NB: step is copied because it is donated in train_step
             (model, ema_model, opt_state, total_loss, metrics) = train_step(
                 model, ema_model, step.copy(), opt_state, batch_sharded
             )
