@@ -1,5 +1,5 @@
-resume_from: nequix-omol-neutral-index.pkl
-state_path: nequix-omol-neutral-index.pkl # for saving/resuming training
+resume_from: nequix-omol-neutral-index-repulsion.pkl
+state_path: nequix-omol-neutral-index-repulsion.pkl # for saving/resuming training
 cutoff: 6.0
 
 # dataset specific
@@ -115,7 +115,7 @@ mlp_init_scale: 4.0
 index_weights: true
 layer_norm: true
 kernel: true
-add_repulsion: false
+add_repulsion: true
 
 # training specific
 optimizer: "muon"

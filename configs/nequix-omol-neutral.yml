@@ -1,5 +1,5 @@
-resume_from: nequix-omol-neutral-state.pkl
-state_path: nequix-omol-neutral-state.pkl # for saving/resuming training
+resume_from: nequix-omol-neutral.pkl
+state_path: nequix-omol-neutral.pkl # for saving/resuming training
 cutoff: 6.0
 
 # dataset specific
@@ -115,6 +115,7 @@ mlp_init_scale: 4.0
 index_weights: false
 layer_norm: true
 kernel: true
+add_repulsion: false
 
 # training specific
 optimizer: "muon"

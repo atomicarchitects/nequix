@@ -549,7 +549,6 @@ class Nequix(eqx.Module):
             self.shift
         )
 
-
         # add repulsion term if specified
         if self.repulsion_fn is not None:
             node_energies = node_energies + self.repulsion_fn(
