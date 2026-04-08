@@ -1,5 +1,4 @@
 import argparse
-import functools
 import os
 import time
 from collections import defaultdict
@@ -9,7 +8,9 @@ import cloudpickle
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import jax.sharding as jshard
 import jraph
+from jax.experimental.shard_map import shard_map
 import optax
 import yaml
 from wandb_osh.hooks import TriggerWandbSyncHook
@@ -305,8 +306,13 @@ def train(config_path: str):
 
     opt_state = optim.init(eqx.filter(model, eqx.is_array))
 
-    model = jax.device_put_replicated(model, list(jax.devices()))
-    opt_state = jax.device_put_replicated(opt_state, list(jax.devices()))
+    mesh = jax.sharding.Mesh(jax.devices(), ("device",))
+    P = jshard.PartitionSpec
+    data_sharding = jshard.NamedSharding(mesh, P("device"))
+    model_sharding = jshard.NamedSharding(mesh, P())
+
+    model = eqx.filter_shard(model, model_sharding)
+    opt_state = eqx.filter_shard(opt_state, model_sharding)
     ema_model = jax.tree.map(lambda x: x.copy(), model)  # copy model
     step = jnp.array(0)
     start_epoch = 0
@@ -324,6 +330,9 @@ def train(config_path: str):
             best_val_loss,
             wandb_run_id,
         ) = load_training_state(config["resume_from"])
+        model = eqx.filter_shard(model, model_sharding)
+        ema_model = eqx.filter_shard(ema_model, model_sharding)
+        opt_state = eqx.filter_shard(opt_state, model_sharding)
 
     wandb_init_kwargs = {"project": "nequix", "config": config}
     if wandb_run_id:
@@ -333,10 +342,9 @@ def train(config_path: str):
         wandb.run.summary["param_count"] = param_count
         wandb_run_id = getattr(wandb.run, "id", None)
 
-    # @eqx.filter_jit
-    @functools.partial(eqx.filter_pmap, in_axes=(0, 0, None, 0, 0), axis_name="device")
     def train_step(model, ema_model, step, opt_state, batch):
-        # training step
+        # remove leading device-shard dim (shard_map preserves rank; model expects no device axis)
+        batch = jax.tree.map(lambda x: x.squeeze(0), batch)
         (total_loss, metrics), grads = eqx.filter_value_and_grad(loss, has_aux=True)(
             model,
             batch,
@@ -345,7 +353,7 @@ def train(config_path: str):
             config["stress_weight"],
             config["loss_type"],
         )
-        grads = jax.lax.pmean(grads, axis_name="device")
+        grads = jax.lax.pmean(grads, "device")
         metrics["grad_norm"] = optax.global_norm(grads)
         updates, opt_state = optim.update(grads, opt_state, eqx.filter(model, eqx.is_array))
         model = eqx.apply_updates(model, updates)
@@ -360,13 +368,26 @@ def train(config_path: str):
         )
         ema_model = eqx.combine(ema_static, new_ema_params)
 
-        return (
-            model,
-            ema_model,
-            opt_state,
-            total_loss,
-            metrics,
-        )
+        # add axis so shard_map can concat on per-device axis
+        metrics = jax.tree.map(lambda x: x[None], metrics)
+        total_loss = total_loss[None]
+
+        return model, ema_model, opt_state, total_loss, metrics
+
+    metrics_spec = {
+        "energy_mae_per_atom": P("device"),
+        "force_mae": P("device"),
+        "stress_mae_per_atom": P("device"),
+        "grad_norm": P("device"),
+    }
+    train_step_sharded = shard_map(
+        train_step,
+        mesh,
+        in_specs=(P(), P(), P(), P(), P("device")),
+        out_specs=(P(), P(), P(), P("device"), metrics_spec),
+        check_rep=False,  # NOTE: needed for kernels
+    )
+    train_step = eqx.filter_jit(donate="all")(train_step_sharded)
 
     for epoch in range(start_epoch, config["n_epochs"]):
         start_time = time.time()
@@ -374,8 +395,10 @@ def train(config_path: str):
         for batch in prefetch(train_loader):
             batch_time = time.time() - start_time
             start_time = time.time()
+            batch_sharded = eqx.filter_shard(batch, data_sharding)
+            # NB: step is copied because it is donated in train_step
             (model, ema_model, opt_state, total_loss, metrics) = train_step(
-                model, ema_model, step, opt_state, batch
+                model, ema_model, step.copy(), opt_state, batch_sharded
             )
             train_time = time.time() - start_time
             step = step + 1
@@ -395,9 +418,8 @@ def train(config_path: str):
                 wandb_sync()
             start_time = time.time()
 
-        ema_model_single = jax.tree.map(lambda x: x[0], ema_model)
         val_metrics = evaluate(
-            ema_model_single,
+            ema_model,
             val_loader,
             config["energy_weight"],
             config["force_weight"],
@@ -407,7 +429,7 @@ def train(config_path: str):
 
         if val_metrics["loss"] < best_val_loss:
             best_val_loss = val_metrics["loss"]
-            save_model(Path(wandb.run.dir) / "checkpoint.nqx", ema_model_single, config)
+            save_model(Path(wandb.run.dir) / "checkpoint.nqx", ema_model, config)
 
         save_training_state(
             Path(wandb.run.dir) / "state.pkl",
