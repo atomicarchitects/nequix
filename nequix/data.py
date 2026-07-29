@@ -209,6 +209,9 @@ def _dataloader_worker(dataset, index_queue, output_queue):
         if index is None:
             break
         output_queue.put((index, dataset[index]))
+    # allow exit without flushing queued results, otherwise a mid-iteration
+    # shutdown deadlocks the join on unflushed results
+    output_queue.cancel_join_thread()
 
 
 # multiprocess data loader with dynamic batching, based on
@@ -455,10 +458,7 @@ def dataset_stats(dataset: Dataset, atom_energies: list[float], num_workers: int
             num_force_components += graph.nodes["forces"].size
             sum_neighbors += n_edge / n_node
     finally:
-        for _ in loader.workers:
-            loader.index_queue.put(None)
-        for w in loader.workers:
-            w.join(timeout=1.0)
+        loader.shutdown()
 
     mean = sum_energy_per_atom / num_graphs
     rms = float(np.sqrt(sum_force_sq / num_force_components))
