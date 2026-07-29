@@ -442,6 +442,9 @@ def train(config_path: str):
         print(f"epoch: {epoch}, logs: {logs}")
         wandb_sync()
 
+    train_loader.loader.shutdown()
+    val_loader.shutdown()
+
 
 def main():
     parser = argparse.ArgumentParser()
