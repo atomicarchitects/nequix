@@ -75,6 +75,7 @@ torch-sim = [
 ]
 oeq = [
   "openequivariance>=0.8.2; python_version >= '3.11'",
+  "jax>=0.8.1,<0.11; python_version >= '3.11'",  # OEQ JAX kernels need >=0.8.1; dm-haiku breaks on >=0.11
 ]
 pft = [
     "phonopy>=2.43.1",
