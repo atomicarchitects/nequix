@@ -10,7 +10,6 @@ import jax
 import jax.numpy as jnp
 import jax.sharding as jshard
 import jraph
-from jax.experimental.shard_map import shard_map
 import optax
 import yaml
 from wandb_osh.hooks import TriggerWandbSyncHook
@@ -380,12 +379,12 @@ def train(config_path: str):
         "stress_mae_per_atom": P("device"),
         "grad_norm": P("device"),
     }
-    train_step_sharded = shard_map(
+    train_step_sharded = jax.shard_map(
         train_step,
-        mesh,
+        mesh=mesh,
         in_specs=(P(), P(), P(), P(), P("device")),
         out_specs=(P(), P(), P(), P("device"), metrics_spec),
-        check_rep=False,  # NOTE: needed for kernels
+        check_vma=False,  # NOTE: needed for kernels
     )
     train_step = eqx.filter_jit(donate="all")(train_step_sharded)
 
