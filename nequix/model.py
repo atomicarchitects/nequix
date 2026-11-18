@@ -173,13 +173,10 @@ class NequixConvolution(eqx.Module):
 
             try:
                 import openequivariance as oeq
-                import openequivariance_extjax  # noqa: F401
             except ImportError:
                 raise ImportError(
-                    "OpenEquivariance with JAX support is required for kernel=True. "
-                    "Install both packages:\n"
-                    "  uv pip install 'openequivariance[jax]'\n"
-                    "  uv pip install 'openequivariance_extjax' --no-build-isolation"
+                    "OpenEquivariance >= 0.8.2 is required for kernel=True:\n"
+                    "  uv pip install 'openequivariance>=0.8.2'"
                 )
 
             instructions = [instructions[i] for i in inv]

@@ -7,7 +7,6 @@ from nequix.calculator import NequixCalculator
 
 try:
     import openequivariance  # noqa: F401
-    import openequivariance_extjax  # noqa: F401
 
     OEQ_AVAILABLE = True
 except (ImportError, AssertionError):

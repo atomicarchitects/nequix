@@ -63,7 +63,7 @@ jax-md = { git = "https://github.com/jax-md/jax-md.git" }
 [project.optional-dependencies]
 torch = [
   "e3nn>=0.5.8",
-  "openequivariance>=0.6.4",
+  "openequivariance>=0.8.2; python_version >= '3.11'",
   "torch>=2.7.0",
   "torch-geometric>=2.6.1",
   "setuptools",
@@ -74,9 +74,7 @@ torch-sim = [
   "torch>=2.8.0; python_version >= '3.12'",
 ]
 oeq = [
-  # You need to install openequivariance_extjax separately
-  # uv pip install openequivariance_extjax --no-build-isolation
-  "openequivariance[jax]>=0.6.4",
+  "openequivariance>=0.8.2; python_version >= '3.11'",
 ]
 pft = [
     "phonopy>=2.43.1",
