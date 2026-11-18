@@ -6,12 +6,12 @@ readme = "README.md"
 authors = [
     { name = "Teddy Koker", email = "teddy.koker@gmail.com" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { file = "LICENSE" }
 
 dependencies = [
-    "jax[cuda12]>=0.4.34; sys_platform == 'linux'",
-    "jax>=0.4.34; sys_platform == 'darwin'",
+    "jax[cuda12]>=0.8.1; sys_platform == 'linux'",  # OEQ JAX kernels need >=0.8.1
+    "jax>=0.8.1; sys_platform == 'darwin'",
     "e3nn-jax>=0.20.8",
     "jraph>=0.0.6.dev0",
     "equinox>=0.11.11",
@@ -47,6 +47,7 @@ include = ["nequix/*"]
 dev = [
     "ipython>=8.36.0",
     "jax-md",
+    "jax<0.11",  # dm-haiku (via jax-md) breaks on jax >= 0.11
     "pandas>=2.3.1",
     "pre-commit>=4.1.0",
     "pytest>=8.3.5",
@@ -63,7 +64,7 @@ jax-md = { git = "https://github.com/jax-md/jax-md.git" }
 [project.optional-dependencies]
 torch = [
   "e3nn>=0.5.8",
-  "openequivariance>=0.6.4",
+  "openequivariance>=0.8.2",
   "torch>=2.7.0",
   "torch-geometric>=2.6.1",
   "setuptools",
@@ -74,9 +75,7 @@ torch-sim = [
   "torch>=2.8.0; python_version >= '3.12'",
 ]
 oeq = [
-  # You need to install openequivariance_extjax separately
-  # uv pip install openequivariance_extjax --no-build-isolation
-  "openequivariance[jax]>=0.6.4",
+  "openequivariance>=0.8.2",
 ]
 pft = [
     "phonopy>=2.43.1",

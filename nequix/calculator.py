@@ -85,7 +85,7 @@ class NequixCalculator(Calculator):
         # MP models
         "nequix-mp-1": "https://github.com/atomicarchitects/nequix/raw/7c2854de8e754b1a60274c7d9d2e014989ed632e/models/nequix-mp-1.nqx",
         "nequix-mp-1-pft": "https://github.com/atomicarchitects/nequix/raw/7c2854de8e754b1a60274c7d9d2e014989ed632e/models/nequix-mp-1-pft.nqx",
-        "nequix-mp-1-pft-no-cotrain": "https://github.com/atomicarchitects/nequix/raw/7c2854de8e754b1a60274c7d9d2e014989ed632e/models/nequix-mp-1-pft-no-cotrain.nqx",
+        "nequix-mp-1-pft-nocotrain": "https://github.com/atomicarchitects/nequix/raw/7c2854de8e754b1a60274c7d9d2e014989ed632e/models/nequix-mp-1-pft-nocotrain.nqx",
         #
         # OMat models
         "nequix-omat-1": "https://github.com/atomicarchitects/nequix/raw/9c852a9c4cce69ae5e75bc5a2cf670be21ff8c28/models/nequix-omat-1.nqx",
