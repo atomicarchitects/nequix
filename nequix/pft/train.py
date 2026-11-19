@@ -497,6 +497,9 @@ def train(config_path):
             wandb.log(logs, step=step)
             print(f"epoch {epoch:03d} extra val metrics: {logs}")
 
+    for loader in (train_loader, val_loader, extra_train_loader, extra_val_loader):
+        loader.shutdown()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

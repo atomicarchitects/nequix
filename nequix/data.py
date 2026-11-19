@@ -205,13 +205,13 @@ class AseDBDataset(Dataset):
 
 def _dataloader_worker(dataset, index_queue, output_queue):
     while True:
-        try:
-            index = index_queue.get(timeout=0)
-        except queue.Empty:
-            continue
+        index = index_queue.get()
         if index is None:
             break
         output_queue.put((index, dataset[index]))
+    # allow exit without flushing queued results, otherwise a mid-iteration
+    # shutdown deadlocks the join on unflushed results
+    output_queue.cancel_join_thread()
 
 
 # multiprocess data loader with dynamic batching, based on
@@ -273,6 +273,18 @@ class DataLoader:
             worker.start()
             self.workers.append(worker)
 
+    def shutdown(self):
+        if not self._started:
+            return
+        for _ in self.workers:
+            self.index_queue.put(None)
+        for worker in self.workers:
+            worker.join()
+        self.index_queue.close()
+        self.output_queue.close()
+        self.workers = []
+        self._started = False
+
     def set_epoch(self, epoch):
         self.rng = np.random.default_rng(seed=hash((self.seed, epoch)) % 2**32)
 
@@ -299,11 +311,7 @@ class DataLoader:
                 del cache[real_idx]
             else:
                 while True:
-                    try:
-                        (index, data) = self.output_queue.get(timeout=0)
-                    except queue.Empty:
-                        continue
-
+                    (index, data) = self.output_queue.get()
                     if index == real_idx:
                         item = data
                         break
@@ -450,10 +458,7 @@ def dataset_stats(dataset: Dataset, atom_energies: list[float], num_workers: int
             num_force_components += graph.nodes["forces"].size
             sum_neighbors += n_edge / n_node
     finally:
-        for _ in loader.workers:
-            loader.index_queue.put(None)
-        for w in loader.workers:
-            w.join(timeout=1.0)
+        loader.shutdown()
 
     mean = sum_energy_per_atom / num_graphs
     rms = float(np.sqrt(sum_force_sq / num_force_components))
